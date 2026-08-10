@@ -288,7 +288,7 @@ confirmar, sem escolher a próxima linha manualmente.
 
 | Módulo | Estado | Nota |
 |---|---|---|
-| `orchestrator` — endpoints de picking, zonas, módulos | ✅ PoC funcional | ASP.NET Core Web API real, testada (missão, leitura, confirmação, plataforma, zonas, módulos) |
+| `orchestrator` — endpoints de picking, zonas, módulos | ✅ Ligado a SQL Server real | Já não é em memória — EF Core contra o schema de `database/schema.sql`, testado a sério (ver ADR-012) |
 | `pda` — shell (login, módulos, zona) | ✅ PoC funcional | React Router com sessão local; módulos indisponíveis aparecem desativados |
 | `pda` — módulo `picking` | ✅ PoC funcional | Fluxo guiado (auto-início, avanço automático, plataforma de destino, progresso da missão), testado de ponta a ponta com um browser real |
 | `pda` — offline-first (`picking`) | ✅ PoC funcional | IndexedDB + fila de saída, testado com corte de rede real (ADR-007) |
@@ -297,9 +297,9 @@ confirmar, sem escolher a próxima linha manualmente.
 | `controller` | 🚧 Em construção | Scaffold TypeScript/React/Vite, layout desktop (ver ADR-006) |
 | `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
-| Regras de missão configuráveis | ✅ PoC funcional | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, ainda em memória (ADR-010) |
-| Receção de Ordens de Separação | ✅ PoC funcional | `POST`/`GET /api/ordens-separacao` no `orchestrator`, testado; só recebe e guarda — ainda não cria missões (ADR-011) |
-| Base de dados WOPA (SQL Server) | ✅ Script pronto | `orchestrator/database/schema.sql` — schema completo (inclui terminais, utilizadores, alvéolos, cestos, tipos de plataforma, stock — ADR-011), ainda **não ligado** ao `orchestrator` (que continua em memória na PoC) |
+| Regras de missão configuráveis | ✅ Persistido em SQL Server | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, agora na tabela `orchestrator.RegrasMissao` (ADR-010/012) |
+| Receção de Ordens de Separação | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-separacao`, testado, agora grava mesmo; só recebe e guarda — ainda não cria missões (ADR-011) |
+| Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012). O `orchestrator` já lê/escreve nela via EF Core |
 | Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
 
 ---
@@ -622,15 +622,66 @@ confirmar, sem escolher a próxima linha manualmente.
   tabelas (`Zonas`, `Modulos`, `RegrasMissao`, `OrdensSeparacao`,
   `MissaoLinhas`, `OperacoesProcessadas`, `TiposPlataforma`) mantêm
   nomes descritivos por não terem sido dado um código específico.
-- **Tentativa de ligar o `orchestrator` a SQL Server a sério:** ao
-  avançar para isto, tentei instalar o SQL Server neste ambiente para
-  testar contra uma instância real — o pacote em si vem de um host
-  geofenced (`pmc-geofence.trafficmanager.net`) bloqueado pela política
-  de rede desta sandbox (não algo a contornar). Sem instância real
-  disponível para testar, e dado que ligar a persistência a sério
-  implica decidir como reconciliar o schema normalizado (Alvéolo/Tipo
-  de Plataforma por FK) com o formato simples que o `pda` já consome
-  hoje (texto livre), não avancei às cegas — ver secção 8.
+- **Tentativa inicial de ligar o `orchestrator` a SQL Server:** o pacote
+  `mssql-server` do apt vem de um host geofenced
+  (`pmc-geofence.trafficmanager.net`) bloqueado pela política de rede
+  da sandbox onde isto foi escrito (não algo a contornar). A imagem
+  Docker oficial (`mcr.microsoft.com/mssql/server`), em contrapartida,
+  não estava bloqueada — resolvido ao correr um SQL Server 2022 em
+  contentor Docker só para validar isto neste ambiente de
+  desenvolvimento (não é o servidor do cliente).
+
+### ADR-012 — Orchestrator ligado a SQL Server a sério: Opção A (API estável, schema normalizado por trás)
+
+- **Contexto:** com o schema novo (ADR-011) a normalizar localização e
+  tipo de plataforma em tabelas próprias (`ALV`, `TiposPlataforma`), o
+  `pda` — já testado a fundo a consumir `localizacao`/`plataforma`
+  como texto simples — ficava perante duas opções (colocadas ao
+  cliente): (a) o `orchestrator` mantém a API simples e faz `JOIN` por
+  trás; (b) muda-se a API e o `pda` para IDs normalizados. **O cliente
+  escolheu a opção A.**
+- **Decisão:** o `orchestrator` passa a usar **EF Core** ("database
+  first" — mapeia para as tabelas já criadas por `database/schema.sql`,
+  não usa migrations) como camada de acesso a dados, uma
+  `WopaDbContext` com entidades para cada tabela do schema. Os
+  endpoints (`/api/picking/*`, `/api/config/regras-missao`,
+  `/api/ordens-separacao`, `/api/zonas`, `/api/modulos`) continuam a
+  devolver **exatamente o mesmo formato JSON de antes** — o `PickingTask`
+  (DTO da API) mantém `localizacao`/`plataforma` como texto; o `JOIN`
+  para `ALV.Codigo` acontece só na fronteira da API
+  (`PickingEndpoints.ParaDto`), nunca chega ao `pda`.
+- **Idempotência sem snapshot (ADR-007 revisitado):** a versão em
+  memória guardava uma cópia do resultado por `operacaoId`. A tabela
+  real `picking.OperacoesProcessadas` só regista *que* uma operação
+  aconteceu (sem guardar o resultado) — por isso, ao detetar um
+  reenvio, o `orchestrator` devolve o **estado atual** da linha em vez
+  de um snapshot antigo. É mais simples e continua correto: como só um
+  operador trabalha uma missão de cada vez (ADR-008), o estado atual
+  já reflete o que essa operação fez.
+- **Validado, não assumido:** corri `database/schema.sql` contra uma
+  instância SQL Server 2022 real (Docker, só para teste), com sucesso
+  à primeira depois de uma correção (`SET QUOTED_IDENTIFIER ON`,
+  necessário para a coluna calculada de `CM` — só se descobriu ao
+  correr a sério, prova de porque isto importa). Depois:
+  - Todos os endpoints testados contra essa base de dados real.
+  - **Reiniciei o processo do `orchestrator` por completo** e confirmei
+    que os dados continuavam lá — prova de que é persistência real, não
+    o mesmo processo em memória a continuar a correr.
+  - Corri os testes Playwright já existentes do `pda` (offline
+    completo, indicador de ligação, bloqueio de transição de missão) e
+    do `controller` contra este `orchestrator` ligado à BD — todos a
+    passar sem alterar uma linha de código dos frontends.
+- **Para produção:** a connection string do contentor de teste
+  (`appsettings.Development.json`) **não serve para nada em
+  produção** — é preciso configurar `ConnectionStrings:Wopa` com o
+  servidor real do cliente, via `appsettings.Production.json` ou a
+  variável de ambiente `ConnectionStrings__Wopa` (ver
+  `orchestrator/DEPLOY.md`). Continuo sem essa connection string real
+  — só testei contra o contentor local.
+- **Por implementar:** `SL`/`SA` (movimentos e stock) estão no schema
+  mas nada ainda escreve lá — falta decidir quando um `scan`/`confirm`
+  de picking deve gerar um movimento de stock. Login do `pda` continua
+  sem validar `US.NumeroOperador` a sério (ver secção 8).
 
 ---
 
@@ -641,20 +692,15 @@ confirmar, sem escolher a próxima linha manualmente.
   operador no PDA hoje não é validado no backend).
 - Se `packing` precisa de funcionar offline (ligação instável no
   armazém) — decide entre Blazor Server e WASM.
-- **Ligar o `orchestrator` de facto ao SQL Server** — falta decidir
-  como reconciliar duas coisas antes de o fazer às cegas:
-  1. Uma instância de SQL Server para testar contra (nenhuma
-     disponível no ambiente onde isto foi escrito — a instalação está
-     bloqueada pela política de rede da sandbox).
-  2. O schema normalizado (`ALV`, `TiposPlataforma`, etc., ligados por
-     FK) vs. o formato simples que o `pda` já consome e tem testado
-     (`localizacao`/`plataforma` como texto). Duas opções: (a) o
-     `orchestrator` continua a expor o mesmo formato simples ao `pda`,
-     fazendo `JOIN` para as tabelas normalizadas por trás; ou (b)
-     muda-se a API e o `pda` para trabalhar com os IDs normalizados
-     diretamente. A opção (a) não obriga a tocar no `pda` já testado;
-     a (b) é mais "correta" a prazo mas maior mudança. Preciso que
-     digas qual preferes antes de avançar.
+- **Connection string real do cliente para o SQL Server de produção**
+  (ADR-012) — o `orchestrator` já lê/escreve em SQL Server a sério,
+  mas só foi testado contra um contentor Docker local desta sandbox.
+  Preciso da connection string real (ou de acesso a uma instância de
+  teste do cliente) para validar contra o servidor verdadeiro.
+- **`SL`/`MovimentosStock` e `SA`/`StockArmazem`** — as tabelas existem
+  no schema (ADR-011) mas nada ainda lá escreve. Falta decidir quando
+  um `scan`/`confirm` de picking deve gerar um movimento de stock
+  (`CM_ID` de saída) e atualizar o stock por alvéolo.
 - Módulos `transporte` e `abastecimento`: desenhar o que cada um move
   e que "missão" faz sentido para cada um — e aplicar-lhes o mesmo
   padrão offline-first do ADR-007.
@@ -671,11 +717,6 @@ confirmar, sem escolher a próxima linha manualmente.
   (ADR-008) — já há um mecanismo básico de configuração (ADR-010),
   mas os valores/critérios reais e o motor que efetivamente cria
   missões a partir de Ordens de Separação ainda faltam.
-- **`database/schema.sql` ainda não foi executado contra um SQL
-  Server real** (não há instância disponível neste ambiente de
-  desenvolvimento) — a sintaxe segue os padrões standard do T-SQL, mas
-  vale a pena correr uma primeira vez com atenção e confirmar antes de
-  confiar nele em produção.
 - Endpoint no `orchestrator` para "próxima missão" por
   operador/zona/dispositivo — hoje a PoC só serve uma missão fixa;
   falta decidir o critério de atribuição (fila simples? prioridade?

@@ -7,6 +7,12 @@ public enum PickingTaskStatus
     Concluida
 }
 
+/// <summary>
+/// DTO da API pública — não é a entidade da base de dados (essa é
+/// Data.Entities.MissaoLinhaEntity). Mantém o formato simples que o pda já
+/// consome (Localizacao/Plataforma como texto) mesmo com o schema
+/// normalizado por trás — ver ARCHITECTURE.md ADR-012 ("Opção A").
+/// </summary>
 public class PickingTask
 {
     public required string Id { get; init; }
@@ -18,22 +24,4 @@ public class PickingTask
     public required int QuantidadeAlvo { get; init; }
     public int QuantidadeLida { get; set; }
     public PickingTaskStatus Estado { get; set; } = PickingTaskStatus.Pendente;
-
-    /// <summary>
-    /// Cópia imutável do estado atual — usada para guardar o resultado de uma
-    /// operação idempotente sem ficar agarrada à instância mutável (que pode
-    /// ser alterada por operações seguintes).
-    /// </summary>
-    public PickingTask Clone() => new()
-    {
-        Id = Id,
-        Sku = Sku,
-        Descricao = Descricao,
-        CodigoBarras = CodigoBarras,
-        Localizacao = Localizacao,
-        Plataforma = Plataforma,
-        QuantidadeAlvo = QuantidadeAlvo,
-        QuantidadeLida = QuantidadeLida,
-        Estado = Estado,
-    };
 }

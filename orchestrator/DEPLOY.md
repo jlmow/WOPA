@@ -58,9 +58,19 @@ apagues a pasta `logs` se já existir (ver secção 5).
   ARCHITECTURE.md secção 1) e a política de CORS deixa de ser
   necessária; se ainda assim ficarem em domínios/portas diferentes,
   ajusta `DevClientsPolicy` no `Program.cs` para os domínios reais.
-- **appsettings.Production.json**: cria este ficheiro ao lado de
-  `appsettings.json` para configuração específica de produção (nível
-  de logs, e mais tarde a connection string do SQL Server).
+- **Base de dados**: corre `database/schema.sql` no SQL Server do
+  cliente primeiro (cria a BD `WOPA` e o schema completo). Depois, o
+  `orchestrator` precisa da connection string real — cria
+  `appsettings.Production.json` ao lado de `appsettings.json` com:
+  ```json
+  { "ConnectionStrings": { "Wopa": "Server=<servidor>;Database=WOPA;User Id=<user>;Password=<pass>;TrustServerCertificate=True;" } }
+  ```
+  ou define a variável de ambiente `ConnectionStrings__Wopa` no
+  Application Pool do IIS (mais seguro do que deixar a password em
+  ficheiro). **Nunca uses a connection string de
+  `appsettings.Development.json`** — essa aponta para um contentor
+  Docker local usado só para testar isto em desenvolvimento, não é o
+  servidor do cliente.
 - **HTTPS**: adiciona um binding HTTPS ao site com um certificado
   válido para a rede do cliente; hoje a app não força HTTPS (é uma
   decisão deliberada da PoC, ver `Program.cs` — sem

@@ -34,6 +34,12 @@
 SET NOCOUNT ON;
 GO
 
+-- Necessário para a coluna calculada/persistida em orchestrator.CM
+-- (regra de negócio validada a correr este script contra uma instância
+-- real — sqlcmd não garante isto ligado por omissão).
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -------------------------------------------------------------------------
 -- 1. Base de dados
 -------------------------------------------------------------------------

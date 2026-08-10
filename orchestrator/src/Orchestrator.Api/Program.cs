@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using Orchestrator.Api.Config;
+using Orchestrator.Api.Data;
 using Orchestrator.Api.Modulos;
 using Orchestrator.Api.OrdensSeparacao;
 using Orchestrator.Api.Picking;
@@ -11,9 +13,13 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddSingleton<PickingStore>();
-builder.Services.AddSingleton<RegrasMissaoStore>();
-builder.Services.AddSingleton<OrdensSeparacaoStore>();
+
+// A base de dados é criada por database/schema.sql (não por migrations —
+// este DbContext é "database first" por desenho, ver Data/WopaDbContext.cs).
+// A connection string real fica em appsettings.{Environment}.json ou na
+// variável de ambiente ConnectionStrings__Wopa — nunca aqui no código.
+builder.Services.AddDbContext<WopaDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("Wopa")));
 
 // PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
 // Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio

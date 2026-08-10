@@ -7,6 +7,8 @@ namespace Orchestrator.Api.Config;
 /// </summary>
 public class RegrasMissao
 {
+    public int Id { get; set; }
+
     public required string Chave { get; init; } = "default";
 
     /// <summary>Nº máximo de linhas (artigos a picar) por missão.</summary>
