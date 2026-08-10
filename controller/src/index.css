@@ -1,0 +1,160 @@
+:root {
+  --text: #1a1a1a;
+  --text-muted: #6b6b63;
+  --bg: #faf8f4;
+  --card-bg: #ffffff;
+  --sidebar-bg: #1a1a1a;
+  --sidebar-text: #faf8f4;
+  --border: #d8d2c4;
+  --gold: #b9962e;
+  --ok: #0a8a3a;
+  --erro: #ac4646;
+  --pendente: #6b6b63;
+  --em-progresso: #b9962e;
+  --concluida: #0a8a3a;
+
+  --heading-font: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --sans-font: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  font: 15px/1.4 var(--sans-font);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.shell__sidebar {
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  padding: 24px 20px;
+}
+
+.shell__brand {
+  font-family: var(--heading-font);
+  font-size: 22px;
+  margin: 0;
+}
+
+.shell__brand-sub {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #a8a49a;
+  margin: 0 0 28px;
+}
+
+.shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shell__nav-link {
+  color: var(--sidebar-text);
+  text-decoration: none;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-left: 2px solid transparent;
+}
+
+.shell__nav-link--active {
+  border-left-color: var(--gold);
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+
+.shell__content {
+  padding: 32px 40px;
+  max-width: 1100px;
+}
+
+.page__header {
+  margin-bottom: 24px;
+}
+
+.page__header h1 {
+  font-family: var(--heading-font);
+  font-weight: 400;
+  font-size: 28px;
+  margin: 0 0 4px;
+}
+
+.page__subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.page__error {
+  background: #f7ebeb;
+  color: var(--erro);
+  border: 1px solid #e3c9c9;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.page__empty {
+  color: var(--text-muted);
+  padding: 24px 0;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.data-table th {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  background: #f1ecdd;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.status-tag {
+  display: inline-block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+}
+
+.status-tag--Pendente {
+  color: var(--pendente);
+}
+.status-tag--EmProgresso {
+  color: var(--em-progresso);
+  border-color: var(--gold);
+}
+.status-tag--Concluida {
+  color: var(--concluida);
+}

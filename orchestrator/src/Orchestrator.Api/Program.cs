@@ -11,14 +11,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<PickingStore>();
 
-// PoC: o frontend pda corre num dev server separado (Vite).
-// Em produção, orchestrator e frontend ficam atrás do mesmo IIS/domínio
+// PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
+// Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio
 // e este CORS deixa de ser necessário.
-const string PdaClientPolicy = "PdaClient";
+const string DevClientsPolicy = "DevClients";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(PdaClientPolicy, policy =>
-        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+    options.AddPolicy(DevClientsPolicy, policy =>
+        policy.WithOrigins(
+                  "http://localhost:5173", "http://127.0.0.1:5173", // pda
+                  "http://localhost:5174", "http://127.0.0.1:5174") // controller
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
@@ -31,7 +33,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors(PdaClientPolicy);
+app.UseCors(DevClientsPolicy);
 
 app.MapPickingEndpoints();
 app.MapZonaEndpoints();

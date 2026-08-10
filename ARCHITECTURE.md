@@ -79,7 +79,7 @@ atrito de integração nesse ecossistema, cumprindo o requisito de
 | Módulo | Tecnologia | Porquê |
 |---|---|---|
 | `orchestrator` | ASP.NET Core Web API (.NET 8), hospedado em IIS | Suporte nativo a IIS; EF Core/Dapper para SQL Server; endpoints REST/JSON; ponto único de integração com o ERP |
-| `controller`, `core-config` | Provável: **TypeScript + React + Vite**, mesmo layout desktop (por confirmar — ver secção 8) | Unifica com o frontend do `pda`: uma só stack de frontend em todo o projeto (ver secção 3.3) |
+| `controller`, `core-config` | **TypeScript + React + Vite**, layout desktop (ver ADR-006) | Uma só stack de frontend em todo o WOPA; hardware (leitores/impressoras) resolvido sem sair da stack web — ver secção 3.6 |
 | `packing` | Blazor (Server ou WASM), hospedado em IIS | Posto fixo tipo POS; interface web leve, atualização central, compatível com leitor de código de barras em modo teclado |
 | `pda` (módulos `picking`, `transporte`, `abastecimento`) | **PWA — TypeScript + React + Vite** (ver ADR-002) | Instalável no Android, sem SDK nativo, testável de ponta a ponta, atualização centralizada |
 | Base de dados | 1 SQL Server ("WOPA"), com **schema por módulo** (`orchestrator`, `packing`, `pda_picking`, ...) | Cumpre "1 base de dados" mantendo governança e fronteiras claras entre módulos |
@@ -103,20 +103,38 @@ prática, o operador só instala uma app no dispositivo; login, sessão,
 seleção de zona e o cliente da API são código partilhado entre os três
 módulos.
 
-### 3.5 Candidato a stack única de frontend: também no desktop
+### 3.5 Stack única de frontend, incluindo desktop (ADR-006)
 
 `controller` e `core-config` correm em Windows, não em PDAs — a regra
-da secção 3.3 não os obriga tecnicamente. Ainda assim, a direção atual
-é usarem a **mesma stack TypeScript + React + Vite** do `pda`, apenas
-com um layout desktop (grelhas mais largas, tabelas, navegação
-lateral) em vez do layout mobile-first dos PDAs. Isto dá **uma única
-stack de frontend em todo o WOPA**: mesma linguagem, mesmas
-ferramentas de build/teste, potencial para partilhar componentes e o
-cliente da API entre `pda`, `controller` e `core-config`. Continua uma
-app web separada por projeto (não módulos dentro do `pda`, porque o
-público e o propósito são diferentes) — só a tecnologia é partilhada.
-Ainda por confirmar formalmente (ver secção 8); se confirmado, esta
-secção passa a ADR.
+da secção 3.3 não os obriga tecnicamente. Ainda assim, usam a **mesma
+stack TypeScript + React + Vite** do `pda`, apenas com um layout
+desktop (grelhas mais largas, tabelas, navegação lateral) em vez do
+layout mobile-first dos PDAs. Isto dá **uma única stack de frontend em
+todo o WOPA** — ver ADR-006. Continuam apps web separadas por projeto
+(não módulos dentro do `pda`, porque o público e o propósito são
+diferentes) — só a tecnologia é partilhada.
+
+### 3.6 Hardware: leitores de código de barras e impressoras
+
+O `controller` (e postos fixos como `packing`) lidam com hardware que
+uma app web não controla da mesma forma que uma app nativa. Isto **não
+é motivo para sair da stack web** — cada tipo de hardware tem um
+caminho definido:
+
+| Hardware | Como liga | Como se resolve |
+|---|---|---|
+| Leitor de código de barras (PDA, integrado) | Modo teclado (*keyboard wedge*) | Funciona nativamente em qualquer input HTML — sem API especial (já validado no `pda`) |
+| Leitor de código de barras USB (Windows) | Normalmente também modo teclado (*keyboard wedge*) | Igual ao de cima — funciona out-of-the-box num campo de input focado |
+| Impressora de etiquetas ZPL (Zebra, etc.) — **ligada em rede** | TCP/IP, porta 9100 (raw socket) | O `orchestrator` envia o ZPL diretamente para IP:porta da impressora — trabalho do backend, o browser nunca precisa de tocar na impressora |
+| Impressora de talões / etiquetas — **ligada por USB/série a um PC** | USB ou porta série | **WebUSB / WebSerial** (suportado em Chrome/Edge, que já são os browsers-alvo no Windows): a página pede autorização ao dispositivo uma vez e depois envia os bytes em bruto (ESC/POS ou ZPL), sem diálogo de impressão do Windows |
+
+**Princípio:** impressora em rede → o backend imprime; impressora
+local por USB/série → o browser imprime via WebUSB/WebSerial. Em
+nenhum dos casos é preciso sair da stack TypeScript/React nem instalar
+software nativo adicional no posto de trabalho. Fica como item a
+detalhar (endpoint de impressão no `orchestrator`, biblioteca de
+geração de ZPL/ESC-POS) quando `controller`/`packing` chegarem a essa
+funcionalidade — ver secção 8.
 
 ---
 
@@ -216,7 +234,8 @@ confirmar, sem escolher a próxima linha manualmente.
 | `pda` — shell (login, módulos, zona) | ✅ PoC funcional | React Router com sessão local; módulos indisponíveis aparecem desativados |
 | `pda` — módulo `picking` | ✅ PoC funcional | Fluxo guiado (auto-início, avanço automático, plataforma de destino, progresso da missão), testado de ponta a ponta com um browser real |
 | `pda` — módulos `transporte`, `abastecimento` | ⏳ Por começar | Já aparecem no seletor de módulos como "em breve"; seguem a mesma stack e os mesmos princípios de UX do `picking` |
-| `controller`, `core-config` | ⏳ Por começar | Stack a confirmar (ver secção 3.5 e secção 8) |
+| `controller` | 🚧 Em construção | Scaffold TypeScript/React/Vite, layout desktop (ver ADR-006) |
+| `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar |
 | `packing` | ⏳ Por começar | |
 | Base de dados WOPA (SQL Server) | ⏳ Por desenhar | A PoC usa dados em memória no `orchestrator` como substituto temporário |
 
@@ -320,13 +339,39 @@ confirmar, sem escolher a próxima linha manualmente.
   de um ritmo de releases independente dos outros — nessa altura
   separa-se, não antes.
 
+### ADR-006 — `controller` e `core-config` também em TypeScript + React + Vite
+
+- **Contexto:** `controller` e `core-config` correm em Windows, não em
+  PDA — a regra da ADR-002 (Android → PWA) não os obriga tecnicamente.
+  Pesou-se manter .NET MAUI/Blazor Hybrid como stack de desktop
+  separada.
+- **Decisão:** `controller` e `core-config` são construídos na mesma
+  stack do `pda` — **TypeScript + React + Vite** — como apps web
+  separadas (não módulos dentro do `pda`, ver secção 3.4), com layout
+  desktop em vez de mobile-first.
+- **Porquê:**
+  - **Uma só stack de frontend em todo o WOPA**: mesma linguagem,
+    mesmas ferramentas de build/teste, potencial para partilhar
+    componentes e o cliente de API com o `pda`.
+  - O `controller` é essencialmente dashboards, tabelas e formulários
+    (gestão de missões/ondas, configuração) — exatamente onde React é
+    forte; não há requisito real de acesso ao SO que só uma app nativa
+    desse.
+  - Hospeda-se como ficheiros estáticos no mesmo IIS, coerente com a
+    regra de infraestrutura on-premise.
+  - **Hardware (leitores e impressoras) não é bloqueio** — ver secção
+    3.6: leitores USB funcionam em modo teclado como qualquer input
+    web; impressoras em rede são o `orchestrator` a imprimir; impressoras
+    USB/série usam WebUSB/WebSerial (suportado em Chrome/Edge).
+- **Risco aceite:** se algum dia surgir uma necessidade genuína de
+  acesso ao SO que a Web API do browser não cubra (ex.: um periférico
+  muito específico sem modo teclado nem WebUSB), reavalia-se nessa
+  altura — não há indicação disso agora.
+
 ---
 
 ## 8. Em aberto
 
-- Confirmar formalmente a secção 3.5: `controller`/`core-config` em
-  TypeScript + React + Vite (mesma stack do `pda`, layout desktop) —
-  proposto, ainda não decidido. Passa a ADR-006 quando confirmado.
 - Autenticação/autorização entre clientes e o `orchestrator` (ex.: JWT
   emitido pelo `orchestrator`, um por dispositivo/utilizador; login do
   operador no PDA hoje não é validado no backend).
