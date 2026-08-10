@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Orchestrator.Api.Config;
 using Orchestrator.Api.Modulos;
+using Orchestrator.Api.OrdensSeparacao;
 using Orchestrator.Api.Picking;
 using Orchestrator.Api.Zonas;
 
@@ -12,6 +13,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<PickingStore>();
 builder.Services.AddSingleton<RegrasMissaoStore>();
+builder.Services.AddSingleton<OrdensSeparacaoStore>();
 
 // PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
 // Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio
@@ -45,5 +47,6 @@ app.MapPickingEndpoints();
 app.MapZonaEndpoints();
 app.MapModuloEndpoints();
 app.MapRegrasMissaoEndpoints();
+app.MapOrdensSeparacaoEndpoints();
 
 app.Run();

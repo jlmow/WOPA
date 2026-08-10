@@ -36,7 +36,7 @@ flowchart LR
         db[("SQL Server\nWOPA")]
     end
 
-    ordershub["OrdersHub\n(existente)\npedidos de separação\n-> Ordens de Preparação"]
+    ordershub["OrdersHub\n(existente)\npedidos de separação\n-> Ordens de Separação"]
     phc["PHC\n(ERP do cliente)"]
 
     controller -- REST/JSON --> orchestrator
@@ -45,16 +45,17 @@ flowchart LR
     pda -- REST/JSON --> orchestrator
 
     orchestrator --> db
-    orchestrator <-- Ordens de Preparação --> ordershub
+    ordershub -- "POST /api/ordens-separacao (ADR-011)" --> orchestrator
     orchestrator <-- integração --> phc
 ```
 
 **Princípio inegociável:** nenhum cliente fala diretamente com a base
-de dados, com o ERP ou com o OrdersHub. Tudo passa pelo `orchestrator`
-— incluindo o `controller`, que **não tem acesso a bases de dados
-externas** (é só frontend, ver ADR-006): quem consulta o PHC/OrdersHub
-é sempre o `orchestrator`, nunca o `controller` diretamente (ver
-ADR-008, ainda por confirmar o detalhe exato dessa integração).
+de dados ou com sistemas externos. Tudo passa pelo `orchestrator` —
+incluindo o `controller`, que **não tem acesso a bases de dados
+externas** (é só frontend, ver ADR-006). Para as Ordens de Separação
+(PHC/OrdersHub) o sentido é o inverso de uma consulta: é o WOPA que
+**recebe**, através de um endpoint próprio do `orchestrator` — ver
+ADR-011.
 
 ---
 
@@ -62,8 +63,8 @@ ADR-008, ainda por confirmar o detalhe exato dessa integração).
 
 | Módulo | Tipo de posto de trabalho | Responsabilidade |
 |---|---|---|
-| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com a BD WOPA, com o ERP (PHC) e com o OrdersHub (Ordens de Preparação) — ver secção 4.4/ADR-008 |
-| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; carrega as Ordens de Preparação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
+| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com o ERP (PHC), e receção das Ordens de Separação (`POST /api/ordens-separacao`) — ver secção 4.4/ADR-008/ADR-011 |
+| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; lê as Ordens de Separação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
 | `core-config` | Desktop (Windows) | Configuração do sistema (parametrização) |
 | `packing` | Posto fixo tipo POS | Picagem/embalamento de encomendas por operadores num posto fixo |
 | `pda` | PDA Android (mobilidade) | App única com os módulos `picking` (implementado), `transporte` e `abastecimento` (por implementar) — ver secção 4.1 |
@@ -185,35 +186,37 @@ no desenho final, o `controller` é quem cria as ondas/missões, e o
 Confirmado pelo cliente:
 
 ```
-OrdersHub (existente)                          controller                    orchestrator                 pda
-─────────────────────                          ──────────                    ────────────                 ───
+OrdersHub / PHC                          orchestrator                    controller                    pda
+────────────────                         ────────────                    ──────────                    ───
 pedido de separação
         │
         ▼
-"Ordens de Preparação" ──consulta (PHC/OrdersHub)──▶  carrega Ordens   ──cria missão──▶  distribui   ──1 missão──▶  executa
-   (documento)                                        de Preparação                       a missão                  (offline-first,
-                                                        │                                                            ADR-007)
-                                                        ▼
-                                                  cria missões
-                                              (regras de negócio
-                                                a confirmar)
+"Ordens de Separação" ──POST /api/ordens-separacao──▶  guarda (ADR-011)
+   (documento)                                                │
+                                                                ▼
+                                                          lê Ordens   ──cria missão──▶  distribui   ──1 missão──▶  executa
+                                                          pendentes         (regras de       a missão                (offline-first,
+                                                                            negócio,                                 ADR-007)
+                                                                            ADR-010,
+                                                                            a confirmar)
 ```
 
 1. **Origem:** os pedidos de separação são feitos no **OrdersHub**
-   (software já existente do cliente). O OrdersHub gera o documento
-   **"Ordens de Preparação"**.
-2. **Entrada do `controller`:** essas Ordens de Preparação chegam ao
-   WOPA por uma consulta à BD do **PHC** (o ERP do cliente) ou ao
-   **OrdersHub** — o detalhe exato (qual dos dois, e se é consulta
-   direta à BD ou uma API/exportação) ainda está por confirmar com o
-   cliente (ver secção 8). O que já está decidido: essa consulta **não
-   é feita pelo `controller` diretamente** — o `controller` é só
-   frontend, sem acesso a bases de dados externas (ADR-006). É o
-   `orchestrator` que faz essa integração e expõe as Ordens de
-   Preparação ao `controller` via API, mantendo o princípio da secção 1.
-3. **Criação da missão:** o `controller`, com as Ordens de Preparação
-   carregadas, cria as missões — segundo regras de negócio que o
-   cliente vai detalhar (ver secção 8). Ainda não implementado.
+   (software já existente do cliente), que gera o documento
+   **"Ordens de Separação"**.
+2. **Entrada no WOPA — é o WOPA que recebe, não vai à procura
+   (ADR-011):** independentemente de quem exatamente as envia (PHC ou
+   OrdersHub — por confirmar, ver secção 8), a informação chega por
+   `POST /api/ordens-separacao` no `orchestrator`. Não há consulta
+   direta a nenhuma base de dados externa — nem do `orchestrator`, nem
+   muito menos do `controller` (que é só frontend, sem acesso a bases
+   de dados externas, ADR-006).
+3. **Criação da missão:** o `controller`, a partir das Ordens de
+   Separação recebidas (via API do `orchestrator`), cria as missões —
+   segundo as `RegrasMissao` (ADR-010, ainda uma versão básica
+   proposta, não confirmada) e regras de negócio adicionais que o
+   cliente vai detalhar (ver secção 8). Ainda não implementado — o
+   endpoint do ADR-011 só recebe e guarda por agora.
 4. **Distribuição ao PDA — uma missão de cada vez:** as missões vão
    para os PDAs **uma a uma**, não em lote. Um PDA só tem **uma missão
    ativa localmente**. Ao terminá-la, vai buscar a seguinte — não
@@ -295,7 +298,8 @@ confirmar, sem escolher a próxima linha manualmente.
 | `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
 | Regras de missão configuráveis | ✅ PoC funcional | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, ainda em memória (ADR-010) |
-| Base de dados WOPA (SQL Server) | ✅ Script pronto | `orchestrator/database/schema.sql` — schema completo, ainda **não ligado** ao `orchestrator` (que continua em memória na PoC) |
+| Receção de Ordens de Separação | ✅ PoC funcional | `POST`/`GET /api/ordens-separacao` no `orchestrator`, testado; só recebe e guarda — ainda não cria missões (ADR-011) |
+| Base de dados WOPA (SQL Server) | ✅ Script pronto | `orchestrator/database/schema.sql` — schema completo (inclui terminais, utilizadores, alvéolos, cestos, tipos de plataforma, stock — ADR-011), ainda **não ligado** ao `orchestrator` (que continua em memória na PoC) |
 | Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
 
 ---
@@ -484,17 +488,16 @@ confirmar, sem escolher a próxima linha manualmente.
 
 - **Contexto:** o cliente esclareceu o circuito real de dados (ver
   secção 4.4): os pedidos de separação nascem no **OrdersHub**
-  (existente), que gera as **Ordens de Preparação**; essas Ordens
-  chegam ao WOPA por consulta ao PHC ou ao OrdersHub; o `controller`
-  cria as missões a partir delas; os PDAs recebem-nas **uma de cada
-  vez**, não em lote.
+  (existente), que gera as **Ordens de Separação**; essas Ordens
+  chegam ao WOPA; o `controller` cria as missões a partir delas; os
+  PDAs recebem-nas **uma de cada vez**, não em lote.
 - **Decisão:**
-  1. A consulta ao PHC/OrdersHub é feita pelo `orchestrator`, nunca
-     pelo `controller` (que não tem — nem deve ter — acesso a bases de
-     dados externas; é só frontend, ADR-006). O `orchestrator` expõe
-     as Ordens de Preparação ao `controller` via API.
-  2. O `controller` cria as missões a partir das Ordens de Preparação
-     carregadas (regras de negócio por confirmar — ver secção 8).
+  1. **Atualizado pelo ADR-011:** independentemente da origem (PHC ou
+     OrdersHub), é o **WOPA que recebe** — não o `orchestrator` que vai
+     consultar. Ver ADR-011 para o endpoint e o porquê deste desenho
+     (mais simples e mais robusto que o `orchestrator` ir "à procura").
+  2. O `controller` cria as missões a partir das Ordens de Separação
+     recebidas (regras de negócio por confirmar — ver secção 8).
   3. O `orchestrator` entrega **uma missão de cada vez** a cada PDA. O
      dispositivo só mantém localmente a missão que está a executar.
   4. **Executar** uma missão pode ser feito offline (ADR-007).
@@ -512,9 +515,10 @@ confirmar, sem escolher a próxima linha manualmente.
   funcionalidade existir) quando a ligação está confirmada e não há
   operações pendentes por sincronizar — ver ADR-009 para a verificação
   de ligação e a implementação atual desse bloqueio.
-- **Por implementar** (ver secção 8): a integração real com
-  PHC/OrdersHub, a criação de missões no `controller` segundo as
-  regras de negócio do cliente, e um endpoint no `orchestrator` para
+- **Por implementar** (ver secção 8): quem exatamente chama o endpoint
+  do ADR-011 (PHC ou OrdersHub, e como), a criação de missões no
+  `controller` segundo as regras de negócio do cliente a partir das
+  Ordens de Separação recebidas, e um endpoint no `orchestrator` para
   "próxima missão" — hoje a PoC só tem uma missão fixa.
 
 ### ADR-009 — Indicador de ligação ao servidor, real, em todos os ecrãs do PDA
@@ -536,7 +540,7 @@ confirmar, sem escolher a próxima linha manualmente.
 ### ADR-010 — Regras de criação de missão configuráveis (versão básica)
 
 - **Contexto:** o cliente pediu explicitamente que as regras de como o
-  `controller` monta missões a partir das Ordens de Preparação sejam
+  `controller` monta missões a partir das Ordens de Separação sejam
   alteráveis a partir do `core-config`, e autorizou avançar com uma
   proposta básica sem esperar pelas regras reais.
 - **Decisão:** um conjunto mínimo de regras, guardado como
@@ -547,7 +551,7 @@ confirmar, sem escolher a próxima linha manualmente.
   persistido em `orchestrator.RegrasMissao` no schema SQL (ver
   `database/schema.sql`). Hoje só valida (`MaxLinhas`/`MaxPlataformas`
   ≥ 1); ainda não há um motor de criação de missões a consumir estas
-  regras, porque isso depende de sabermos como as Ordens de Preparação
+  regras, porque isso depende de sabermos como as Ordens de Separação
   chegam (ADR-008) — falta esse elo antes de a configuração ter algo
   real para influenciar.
 - **Porquê estes campos e não outros:** são os parâmetros mais óbvios
@@ -559,6 +563,57 @@ confirmar, sem escolher a próxima linha manualmente.
 - **Consequência:** o `core-config` (ainda por começar) terá aqui o
   seu primeiro ecrã real quando arrancar — editar este mesmo endpoint,
   não uma funcionalidade nova a inventar depois.
+
+### ADR-011 — Receção de Ordens de Separação por endpoint (push, não pull), e modelo de dados de armazém
+
+- **Contexto:** o cliente clarificou dois pontos importantes:
+  1. Independentemente da origem exata (PHC ou OrdersHub), é o WOPA
+     que **recebe** a informação — não o `orchestrator` a ir consultar
+     uma BD externa. O WOPA expõe um endpoint; quem tiver essa
+     informação escreve-a lá. O trabalho do `controller` (criar
+     missões) começa a partir do que ficar guardado nessa tabela.
+  2. O modelo de dados de armazém tem entidades obrigatórias que ainda
+     não existiam no schema: **Terminais** (PDAs), **Utilizadores**
+     (operadores), **Alvéolos** (localizações), **Cestos** (tipo de
+     contentor, dimensões, quantos cabem numa palete), **Tipos de
+     Plataforma** (P0/P1/P2/P4, dimensões/altura), **Movimentos de
+     Stock** e **Stock por Armazém/Alvéolo** (com **Códigos de
+     Movimento** — regra do cliente: `CM_ID < 500` é entrada,
+     `CM_ID > 500` é saída).
+- **Decisão:**
+  1. `POST /api/ordens-separacao` no `orchestrator` recebe um
+     documento (nº, origem, linhas de artigo/quantidade/alvéolo) e
+     guarda-o — quem chama (PHC diretamente? um conector do
+     OrdersHub?) ainda está por confirmar, mas a forma de entrada no
+     WOPA já não depende dessa resposta.
+  2. `database/schema.sql` passa a ter as tabelas
+     `orchestrator.Terminais`, `.Utilizadores`, `.Alveolos`, `.Cestos`,
+     `.TiposPlataforma`, `.CodigosMovimento`, `.MovimentosStock`,
+     `.StockArmazem`, e `.OrdensSeparacao`/`.OrdensSeparacaoLinhas`.
+     `picking.MissaoLinhas` passa a referenciar `AlveoloId` (em vez de
+     um texto livre de localização) e `TipoPlataformaCodigo`, e ganha
+     `CestoId`/`CestosNecessarios`. `picking.Missoes` passa a
+     referenciar `UtilizadorId`/`TerminalId` em vez de texto livre.
+  3. A regra `CM_ID < 500`/`> 500` está refletida numa coluna
+     calculada (`Tipo`) em `orchestrator.CodigosMovimento`, não só em
+     comentário — para não depender de cada consumidor da tabela
+     acertar a regra da mesma forma.
+- **Porquê "push" em vez do `orchestrator` consultar PHC/OrdersHub:**
+  mais simples (o WOPA não precisa de saber onde/como consultar cada
+  sistema externo, nem geri credenciais para lá), mais robusto (não há
+  polling a falhar silenciosamente), e mantém o princípio da secção 1
+  — o WOPA só fala com o mundo exterior através de um contrato de API
+  próprio, nunca a espreitar bases de dados de terceiros.
+- **Por implementar:** o motor que lê `OrdensSeparacao` pendentes e
+  aplica as `RegrasMissao` (ADR-010) para criar `Missoes` de facto — o
+  endpoint só recebe e guarda, ainda não processa. O `orchestrator`
+  continua em memória (não ligado a `schema.sql`), por isso este
+  endpoint hoje não persiste nada entre reinícios — ver secção 8.
+- **Riscos aceites:** as dimensões de cestos/plataformas no seed são
+  valores de exemplo (não confirmados); o campo `AlveoloCodigo` de uma
+  linha recebida é opcional porque nem toda origem o vai ter disponível
+  — o `controller` terá de decidir o alvéolo real ao montar a missão
+  quando não vier preenchido.
 
 ---
 
@@ -580,13 +635,14 @@ confirmar, sem escolher a próxima linha manualmente.
   prática.
 - Limite de armazenamento local do IndexedDB e política de limpeza de
   missões antigas já sincronizadas no dispositivo.
-- **PHC vs. OrdersHub** (ADR-008): confirmar com o cliente qual dos
-  dois sistemas é efetivamente consultado para obter as Ordens de
-  Preparação, e como (consulta direta à BD, API, exportação?).
+- **PHC vs. OrdersHub** (ADR-008/011): já não é "quem se consulta" —
+  passou a "quem chama" `POST /api/ordens-separacao`. Falta confirmar
+  se é o PHC, o OrdersHub, ou os dois, e se é uma integração direta ou
+  passa por um conector/middleware intermédio.
 - **Regras de negócio para criação de missões no `controller`**
   (ADR-008) — já há um mecanismo básico de configuração (ADR-010),
   mas os valores/critérios reais e o motor que efetivamente cria
-  missões a partir de Ordens de Preparação ainda faltam.
+  missões a partir de Ordens de Separação ainda faltam.
 - **`database/schema.sql` ainda não foi executado contra um SQL
   Server real** (não há instância disponível neste ambiente de
   desenvolvimento) — a sintaxe segue os padrões standard do T-SQL, mas
