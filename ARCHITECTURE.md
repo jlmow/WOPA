@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Estado** | Em desenvolvimento — validado com PoC funcional |
-| **Última atualização** | Picking PoC (orchestrator + pda-picking) |
+| **Última atualização** | App `pda` (login → módulos → zona → missão de picking, com plataformas de destino) |
 | **Âmbito** | Todos os módulos do projeto WOPA (Warehouse Order & Picking Automation) |
 
 Este documento é a referência viva da arquitetura do WOPA. Regista as
@@ -25,12 +25,10 @@ enviam. A lógica de negócio e a integração com o ERP vivem no
 ```mermaid
 flowchart LR
     subgraph Clientes
-        controller["controller\n(Windows, PWA/desktop)"]
-        coreconfig["core-config\n(Windows, PWA/desktop)"]
+        controller["controller\n(Windows, layout desktop)"]
+        coreconfig["core-config\n(Windows, layout desktop)"]
         packing["packing\n(POS, Blazor)"]
-        pdapick["pda-picking\n(Android, PWA)"]
-        pdaaba["pda-abastecimento\n(Android, PWA)"]
-        pdatrans["pda-transporte\n(Android, PWA)"]
+        pda["pda\n(Android, PWA — login → módulos → zona)\npicking · transporte · abastecimento"]
     end
 
     subgraph Servidor["Servidor do cliente (on-premise, IIS)"]
@@ -43,9 +41,7 @@ flowchart LR
     controller -- REST/JSON --> orchestrator
     coreconfig -- REST/JSON --> orchestrator
     packing -- REST/JSON --> orchestrator
-    pdapick -- REST/JSON --> orchestrator
-    pdaaba -- REST/JSON --> orchestrator
-    pdatrans -- REST/JSON --> orchestrator
+    pda -- REST/JSON --> orchestrator
 
     orchestrator --> db
     orchestrator <-- integração --> erp
@@ -60,13 +56,11 @@ de dados ou com o ERP. Tudo passa pelo `orchestrator`.
 
 | Módulo | Tipo de posto de trabalho | Responsabilidade |
 |---|---|---|
-| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com a BD WOPA e com o ERP do cliente |
-| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional |
+| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com a BD WOPA e com o ERP do cliente. É também quem monta as **missões** de picking (ver secção 4.1) que o `controller` vai gerar |
+| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; gera as ondas/missões que o `pda` consome |
 | `core-config` | Desktop (Windows) | Configuração do sistema (parametrização) |
 | `packing` | Posto fixo tipo POS | Picagem/embalamento de encomendas por operadores num posto fixo |
-| `pda-picking` | PDA Android (mobilidade) | Picking de artigos no armazém |
-| `pda-abastecimento` | PDA Android (mobilidade) | Reabastecimento de localizações de picking |
-| `pda-transporte` | PDA Android (mobilidade) | Movimentação/transporte de paletes e cargas |
+| `pda` | PDA Android (mobilidade) | App única com os módulos `picking` (implementado), `transporte` e `abastecimento` (por implementar) — ver secção 4.1 |
 
 ---
 
@@ -85,9 +79,9 @@ atrito de integração nesse ecossistema, cumprindo o requisito de
 | Módulo | Tecnologia | Porquê |
 |---|---|---|
 | `orchestrator` | ASP.NET Core Web API (.NET 8), hospedado em IIS | Suporte nativo a IIS; EF Core/Dapper para SQL Server; endpoints REST/JSON; ponto único de integração com o ERP |
-| `controller`, `core-config` | A definir — candidato: .NET MAUI ou Blazor Hybrid (Windows) | Apps de secretária Windows; não têm o requisito de mobilidade dos PDAs |
+| `controller`, `core-config` | Provável: **TypeScript + React + Vite**, mesmo layout desktop (por confirmar — ver secção 8) | Unifica com o frontend do `pda`: uma só stack de frontend em todo o projeto (ver secção 3.3) |
 | `packing` | Blazor (Server ou WASM), hospedado em IIS | Posto fixo tipo POS; interface web leve, atualização central, compatível com leitor de código de barras em modo teclado |
-| `pda-picking`, `pda-abastecimento`, `pda-transporte` | **PWA — TypeScript + React + Vite** (ver ADR-002) | Instalável no Android, sem SDK nativo, testável de ponta a ponta, atualização centralizada |
+| `pda` (módulos `picking`, `transporte`, `abastecimento`) | **PWA — TypeScript + React + Vite** (ver ADR-002) | Instalável no Android, sem SDK nativo, testável de ponta a ponta, atualização centralizada |
 | Base de dados | 1 SQL Server ("WOPA"), com **schema por módulo** (`orchestrator`, `packing`, `pda_picking`, ...) | Cumpre "1 base de dados" mantendo governança e fronteiras claras entre módulos |
 
 ### 3.3 Regra fixa: todo o software Android é PWA
@@ -97,12 +91,72 @@ sempre TypeScript + React + Vite, empacotado como PWA instalável.**
 Não é uma escolha caso a caso — é a stack por omissão para mobilidade
 Android neste projeto (ver ADR-002 para a justificação completa).
 
-Isto aplica-se hoje a `pda-picking`, `pda-abastecimento` e
-`pda-transporte`, e a qualquer módulo Android futuro.
+Isto aplica-se hoje ao projeto `pda` (módulos `picking`, `transporte` e
+`abastecimento`), e a qualquer módulo Android futuro.
+
+### 3.4 Um único projeto `pda`, não um projeto por módulo
+
+`picking`, `transporte` e `abastecimento` vivem **dentro do mesmo
+projeto `pda`** (`pda/src/modules/...`), não como três apps/repos
+separados chamados a partir de um "WOPA-PDA" externo (ver ADR-005). Na
+prática, o operador só instala uma app no dispositivo; login, sessão,
+seleção de zona e o cliente da API são código partilhado entre os três
+módulos.
+
+### 3.5 Candidato a stack única de frontend: também no desktop
+
+`controller` e `core-config` correm em Windows, não em PDAs — a regra
+da secção 3.3 não os obriga tecnicamente. Ainda assim, a direção atual
+é usarem a **mesma stack TypeScript + React + Vite** do `pda`, apenas
+com um layout desktop (grelhas mais largas, tabelas, navegação
+lateral) em vez do layout mobile-first dos PDAs. Isto dá **uma única
+stack de frontend em todo o WOPA**: mesma linguagem, mesmas
+ferramentas de build/teste, potencial para partilhar componentes e o
+cliente da API entre `pda`, `controller` e `core-config`. Continua uma
+app web separada por projeto (não módulos dentro do `pda`, porque o
+público e o propósito são diferentes) — só a tecnologia é partilhada.
+Ainda por confirmar formalmente (ver secção 8); se confirmado, esta
+secção passa a ADR.
 
 ---
 
-## 4. Princípios de UX para PDA — picking orientado a performance
+## 4. Modelo de missão e fluxo do PDA
+
+### 4.1 Fluxo do operador: login → módulos → zona → missão
+
+Inspirado em sistemas de picking de armazéns de grande escala (ex.:
+IKEA, Amazon, DHL): o operador nunca escolhe o que fazer a seguir — o
+sistema decide, o operador só executa.
+
+1. **Login** — número de operador (curto, sem password no PDA;
+   validação real fica para quando existir autenticação no
+   `orchestrator`, ver secção 8).
+2. **Módulos** — lista dos módulos disponíveis no `pda` (`picking`,
+   `transporte`, `abastecimento`); os que ainda não estão implementados
+   aparecem visíveis mas desativados ("em breve"), não escondidos.
+3. **Zona** — em que zona do armazém o operador está agora
+   (`GET /api/zonas`).
+4. **Missão** — o módulo abre já na primeira linha por fazer; não há
+   ecrã de "escolher tarefa" no caminho normal.
+
+### 4.2 Missão de picking: plataforma de destino por linha
+
+Uma missão de picking agrupa várias linhas (artigos a picar), tipicamente
+provenientes de várias encomendas em simultâneo (picking em lote). Por
+isso cada linha indica não só *o que* picar, mas **para que
+plataforma/tote colocar** — sem essa indicação, misturar artigos de
+encomendas diferentes no mesmo carrinho é o erro mais comum deste tipo
+de sistema. Ao ler o código de barras certo, a linha conclui-se e
+confirma-se sozinha, e a missão avança para a linha seguinte da rota
+(ordenada por localização). Quando todas as linhas terminam, a missão
+fecha e o ecrã assinala explicitamente a transição: **"Missão concluída
+→ segue para o packing."**
+
+Hoje as missões são geradas com dados fixos no `orchestrator` (PoC);
+no desenho final, o `controller` é quem cria as ondas/missões, e o
+`orchestrator` distribui-as aos PDAs.
+
+### 4.3 Princípios de UX para PDA — picking orientado a performance
 
 Os ecrãs de PDA (picking, abastecimento, transporte) são usados por
 operadores em movimento, muitas vezes de luvas, durante um turno
@@ -136,9 +190,9 @@ no WOPA:
    PDA, a pergunta é: "isto pode ser resolvido por uma leitura, ou
    evitado por completo?"
 
-Estes princípios foram validados na PoC do `pda-picking` (ver secção
-6): ler o código certo é a única ação do operador — sem confirmar,
-sem escolher a próxima tarefa manualmente.
+Estes princípios foram validados na PoC do módulo `picking` do `pda`
+(ver secção 6): ler o código certo é a única ação do operador — sem
+confirmar, sem escolher a próxima linha manualmente.
 
 ---
 
@@ -158,10 +212,11 @@ sem escolher a próxima tarefa manualmente.
 
 | Módulo | Estado | Nota |
 |---|---|---|
-| `orchestrator` — endpoints de picking | ✅ PoC funcional | ASP.NET Core Web API real, testada (listar/ler/confirmar tarefas) |
-| `pda-picking` | ✅ PoC funcional | PWA React/TS/Vite, fluxo de picking sem cliques de confirmação, testado de ponta a ponta com um browser real |
-| `pda-abastecimento`, `pda-transporte` | ⏳ Por começar | Seguem a mesma stack (PWA) e os mesmos princípios de UX do `pda-picking` |
-| `controller`, `core-config` | ⏳ Por começar | Stack de desktop ainda por confirmar |
+| `orchestrator` — endpoints de picking, zonas, módulos | ✅ PoC funcional | ASP.NET Core Web API real, testada (missão, leitura, confirmação, plataforma, zonas, módulos) |
+| `pda` — shell (login, módulos, zona) | ✅ PoC funcional | React Router com sessão local; módulos indisponíveis aparecem desativados |
+| `pda` — módulo `picking` | ✅ PoC funcional | Fluxo guiado (auto-início, avanço automático, plataforma de destino, progresso da missão), testado de ponta a ponta com um browser real |
+| `pda` — módulos `transporte`, `abastecimento` | ⏳ Por começar | Já aparecem no seletor de módulos como "em breve"; seguem a mesma stack e os mesmos princípios de UX do `picking` |
+| `controller`, `core-config` | ⏳ Por começar | Stack a confirmar (ver secção 3.5 e secção 8) |
 | `packing` | ⏳ Por começar | |
 | Base de dados WOPA (SQL Server) | ⏳ Por desenhar | A PoC usa dados em memória no `orchestrator` como substituto temporário |
 
@@ -218,18 +273,70 @@ sem escolher a próxima tarefa manualmente.
 - **Porquê:** cumpre o requisito de BD única, mantendo fronteiras
   claras de propriedade dos dados entre módulos.
 
+### ADR-004 — Missão de picking com plataforma de destino por linha
+
+- **Contexto:** inspirado em sistemas de picking de grandes armazéns
+  (IKEA, Amazon, DHL): picking em lote, onde um operador serve várias
+  encomendas ao mesmo tempo numa só passagem pelo armazém.
+- **Decisão:** o `orchestrator` expõe as tarefas de picking como
+  linhas de uma **missão** (`GET /api/picking/mission` para o resumo,
+  `GET /api/picking/tasks` para as linhas), cada linha com um campo
+  `plataforma` — o tote/palete de destino do artigo. O frontend abre
+  sempre na primeira linha pendente, confirma e avança automaticamente
+  ao atingir a quantidade alvo, e mostra o progresso da missão inteira
+  (não só da linha corrente).
+- **Porquê:** sem indicar o destino por linha, misturar artigos de
+  encomendas diferentes no mesmo carrinho é o erro mais comum deste
+  tipo de picking. Mostrar apenas o progresso da missão (não da tarefa
+  isolada) e avançar sozinho entre linhas elimina decisões e toques
+  desnecessários do operador (ver secção 4.3).
+- **Consequência:** `transporte` e `abastecimento` devem seguir o
+  mesmo padrão de missão quando forem implementados, adaptado ao que
+  cada um move (paletes, localizações a repor).
+
+### ADR-005 — Um único projeto `pda`, módulos internos
+
+- **Contexto:** o `pda` cresceu de um módulo (`picking`) para três
+  (`picking`, `transporte`, `abastecimento`), cada um atrás de
+  login → módulos → zona. Ponderou-se ter um projeto/repo por módulo,
+  coordenados por uma app "WOPA-PDA" externa.
+- **Decisão:** os três módulos vivem dentro de **um único projeto**
+  `pda` (`pda/src/modules/picking`, `.../transporte`,
+  `.../abastecimento`), partilhando shell (login, sessão, seleção de
+  zona) e cliente de API (`pda/src/shared`).
+- **Porquê:**
+  - É um único PWA instalado no dispositivo — um ícone, uma sessão,
+    um service worker. Três apps separadas significam três instalações
+    e três atualizações independentes no mesmo dispositivo.
+  - Login, sessão, zona e cliente API são código genuinamente
+    partilhado pelos três módulos; projetos separados obrigariam a
+    triplicar isto ou a criar uma biblioteca partilhada só para isso.
+  - Um único build estático para publicar no IIS.
+- **Alternativa descartada:** um projeto "WOPA-PDA" que chama os
+  módulos como apps/repos separados (estilo micro-frontend) —
+  complexidade de integração (auth entre origens, versões a coordenar)
+  sem benefício real ao tamanho atual da equipa/projeto.
+- **Reavaliar quando:** um módulo crescer o suficiente para precisar
+  de um ritmo de releases independente dos outros — nessa altura
+  separa-se, não antes.
+
 ---
 
 ## 8. Em aberto
 
+- Confirmar formalmente a secção 3.5: `controller`/`core-config` em
+  TypeScript + React + Vite (mesma stack do `pda`, layout desktop) —
+  proposto, ainda não decidido. Passa a ADR-006 quando confirmado.
 - Autenticação/autorização entre clientes e o `orchestrator` (ex.: JWT
-  emitido pelo `orchestrator`, um por dispositivo/utilizador).
-- Stack definitiva para `controller` e `core-config` (desktop
-  Windows).
+  emitido pelo `orchestrator`, um por dispositivo/utilizador; login do
+  operador no PDA hoje não é validado no backend).
 - Se `packing` precisa de funcionar offline (ligação instável no
   armazém) — decide entre Blazor Server e WASM.
 - Desenho do esquema inicial da base de dados WOPA (schemas por
-  módulo, tabelas de picking/abastecimento/transporte).
+  módulo, tabelas de picking/abastecimento/transporte, e de onde vêm
+  as missões reais criadas pelo `controller`).
 - Estratégia de sincronização/offline para os PDAs quando a rede
   Wi-Fi do armazém falha (fila local + reenvio, ou bloquear leitura
   até haver ligação?).
+- Módulos `transporte` e `abastecimento`: desenhar o que cada um move
+  e que "missão" faz sentido para cada um.

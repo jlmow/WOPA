@@ -135,7 +135,7 @@ body {
   gap: 14px;
 }
 
-.back-button {
+.link-button {
   align-self: flex-start;
   background: none;
   border: none;
@@ -229,4 +229,213 @@ button {
   background: #e9f3ec;
   color: var(--ok);
   border-color: #cbe2d1;
+}
+
+/* Cabeçalho com linha de contexto (missão/zona) + ação secundária */
+.app__header--session,
+.app__header--mission {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.app__header--session {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.app__eyebrow {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 2px;
+}
+
+.app__header--session .link-button,
+.app__header--mission .link-button {
+  padding: 0;
+}
+
+/* Ecrã de login */
+.app--centered {
+  justify-content: center;
+  min-height: 100svh;
+}
+
+.login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.login__eyebrow {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+
+.login h1 {
+  font-family: var(--heading-font);
+  font-weight: 400;
+  font-size: 24px;
+  margin: 0;
+}
+
+.login__display {
+  font-family: var(--heading-font);
+  font-size: 40px;
+  letter-spacing: 0.1em;
+  min-height: 1.2em;
+  color: var(--text-muted);
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+}
+
+.keypad__key {
+  font-family: var(--heading-font);
+  font-size: 22px;
+  padding: 18px 0;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.login__entrar {
+  width: 100%;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 17px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.login__entrar:disabled {
+  background: #b5b0a4;
+  color: #f5f3ee;
+}
+
+/* Listas de escolha (módulos, zonas) */
+.option-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+.option-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  padding: 18px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  font-family: var(--heading-font);
+  font-size: 19px;
+  min-height: 56px;
+}
+
+.option-card:disabled {
+  color: var(--text-muted);
+}
+
+.option-card__codigo {
+  font-family: var(--sans-font);
+  font-weight: 700;
+  margin-right: 12px;
+}
+
+.option-card__tag {
+  font-family: var(--sans-font);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+
+/* Plataforma de destino da linha de picking */
+.platform-badge {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 10px 14px;
+  background: #f1ecdd;
+  border: 1px solid var(--gold);
+  color: var(--text);
+}
+
+.platform-badge strong {
+  font-family: var(--heading-font);
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Progresso da missão */
+.mission-progress {
+  height: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+}
+
+.mission-progress__fill {
+  height: 100%;
+  background: var(--gold);
+  transition: width 200ms ease;
+}
+
+.mission-progress__label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.mission-complete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 32px 0;
+}
+
+.mission-complete h2 {
+  font-family: var(--heading-font);
+  font-weight: 400;
+  font-size: 26px;
+  margin: 0;
+}
+
+.mission-complete .confirm-button {
+  width: 100%;
 }

@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
+using Orchestrator.Api.Modulos;
 using Orchestrator.Api.Picking;
+using Orchestrator.Api.Zonas;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,7 +11,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<PickingStore>();
 
-// PoC: o frontend do pda-picking corre num dev server separado (Vite).
+// PoC: o frontend pda corre num dev server separado (Vite).
 // Em produção, orchestrator e frontend ficam atrás do mesmo IIS/domínio
 // e este CORS deixa de ser necessário.
 const string PdaClientPolicy = "PdaClient";
@@ -32,5 +34,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors(PdaClientPolicy);
 
 app.MapPickingEndpoints();
+app.MapZonaEndpoints();
+app.MapModuloEndpoints();
 
 app.Run();

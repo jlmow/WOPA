@@ -6,12 +6,12 @@ interface Props {
   task: PickingTask;
   onUpdated: (task: PickingTask) => void;
   onCompleted: (taskId: string) => void;
-  onBack: () => void;
+  onVerLista: () => void;
 }
 
 const ADVANCE_DELAY_MS = 600;
 
-export function ScanTask({ task, onUpdated, onCompleted, onBack }: Props) {
+export function ScanTask({ task, onUpdated, onCompleted, onVerLista }: Props) {
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState<{ text: string; kind: "erro" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,12 +32,13 @@ export function ScanTask({ task, onUpdated, onCompleted, onBack }: Props) {
 
   // Uma leitura que atinge a quantidade alvo já é, por si só, a confirmação
   // do operador — não faz sentido pedir mais um toque para confirmar algo
-  // que a própria leitura já provou. O sistema confirma e avança sozinho.
+  // que a própria leitura já provou. O sistema confirma e avança sozinho
+  // para a linha seguinte da missão.
   async function confirmAndAdvance() {
     try {
       const confirmed = await pickingApi.confirm(task.id);
       onUpdated(confirmed);
-      setMessage({ text: "Tarefa concluída. A avançar para a próxima…", kind: "info" });
+      setMessage({ text: "Linha concluída. A avançar…", kind: "info" });
       window.setTimeout(() => onCompleted(task.id), ADVANCE_DELAY_MS);
     } catch (err) {
       setConfirmFailed(true);
@@ -72,14 +73,18 @@ export function ScanTask({ task, onUpdated, onCompleted, onBack }: Props) {
 
   return (
     <div className="scan-screen">
-      <button className="back-button" onClick={onBack} data-testid="back-button">
-        &larr; Voltar
+      <button className="link-button" onClick={onVerLista} data-testid="ver-lista-button">
+        Ver lista da missão
       </button>
 
       <h2>{task.descricao}</h2>
       <p className="scan-screen__meta">
         SKU {task.sku} · Localização <strong>{task.localizacao}</strong>
       </p>
+
+      <div className="platform-badge" data-testid="plataforma">
+        Colocar em <strong>{task.plataforma}</strong>
+      </div>
 
       <div className="scan-screen__progress" data-testid="progress">
         {task.quantidadeLida} / {task.quantidadeAlvo}

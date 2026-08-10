@@ -23,7 +23,7 @@ export function TaskList({ tasks, onSelect }: Props) {
           >
             <span className="task-card__loc">{task.localizacao}</span>
             <span className="task-card__desc">{task.descricao}</span>
-            <span className="task-card__sku">{task.sku}</span>
+            <span className="task-card__sku">{task.sku} · Plataforma {task.plataforma}</span>
             <span className="task-card__qty">
               {task.quantidadeLida}/{task.quantidadeAlvo}
             </span>

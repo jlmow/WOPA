@@ -4,6 +4,8 @@ public record ScanRequest(string Barcode);
 
 public record ErrorResponse(string Erro);
 
+public record MissionSummary(string Codigo, int TotalLinhas, int LinhasConcluidas);
+
 public static class PickingEndpoints
 {
     public static void MapPickingEndpoints(this WebApplication app)
@@ -12,6 +14,16 @@ public static class PickingEndpoints
 
         group.MapGet("/tasks", (PickingStore store) => store.GetAll())
             .WithName("ListarTarefasPicking");
+
+        group.MapGet("/mission", (PickingStore store) =>
+        {
+            var linhas = store.GetAll().ToList();
+            return new MissionSummary(
+                PickingStore.MissionCodigo,
+                linhas.Count,
+                linhas.Count(t => t.Estado == PickingTaskStatus.Concluida));
+        })
+        .WithName("ObterResumoMissaoPicking");
 
         group.MapGet("/tasks/{id}", (string id, PickingStore store) =>
             store.Get(id) is { } task ? Results.Ok(task) : Results.NotFound())

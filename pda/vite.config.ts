@@ -9,9 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "WOPA Picking",
-        short_name: "WOPA Picking",
-        description: "Picking de encomendas para PDA — WOPA",
+        name: "WOPA PDA",
+        short_name: "WOPA PDA",
+        description: "App de armazém para PDA — picking, transporte e abastecimento — WOPA",
         start_url: ".",
         display: "standalone",
         orientation: "portrait",

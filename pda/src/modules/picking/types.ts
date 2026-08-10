@@ -6,11 +6,14 @@ export interface PickingTask {
   descricao: string;
   codigoBarras: string;
   localizacao: string;
+  plataforma: string;
   quantidadeAlvo: number;
   quantidadeLida: number;
   estado: PickingTaskStatus;
 }
 
-export interface ErrorResponse {
-  erro: string;
+export interface MissionSummary {
+  codigo: string;
+  totalLinhas: number;
+  linhasConcluidas: number;
 }
