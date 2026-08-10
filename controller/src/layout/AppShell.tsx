@@ -1,7 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 const NAV_ITEMS = [
-  { to: "/ps", label: "PS", end: false },
   { to: "/ordens-preparacao", label: "Ordens de Preparação", end: false },
   { to: "/missoes", label: "Missões", end: false },
   // Próximos ecrãs do controller (gestão de zonas, operadores, etc.) juntam-se aqui.

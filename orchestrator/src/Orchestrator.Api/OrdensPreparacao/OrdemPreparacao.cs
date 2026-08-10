@@ -1,6 +1,20 @@
+using Orchestrator.Api.OrdensSeparacao;
+
 namespace Orchestrator.Api.OrdensPreparacao;
 
-public record NovaOrdemPreparacaoRequest(string Cliente, DateOnly? DataEntrega, string? MoradaEntrega, IReadOnlyList<string> PsIds);
+/// <summary>
+/// Um PS (pedido de separação) tal como chega dentro de uma Ordem de
+/// Preparação já composta por outro software (ADR-017) — reaproveita o
+/// mesmo formato de linha de <see cref="OrdensSeparacao.OrdemSeparacao"/>.
+/// </summary>
+public record PsRecebido(string NumeroDocumento, string Origem, string? Canal, IReadOnlyList<OrdemSeparacaoLinha> Linhas);
+
+/// <summary>
+/// Corpo de POST /api/ordens-preparacao: a Ordem de Preparação chega já
+/// composta (cliente/data/morada e os PS que a compõem já decididos
+/// noutro software) — o WOPA só a recebe e guarda (ADR-017).
+/// </summary>
+public record NovaOrdemPreparacaoRequest(string Cliente, DateOnly? DataEntrega, string? MoradaEntrega, IReadOnlyList<PsRecebido> Ps);
 
 public record TipificarRequest(decimal? AlturaPaleteCm);
 
@@ -13,7 +27,7 @@ public record OrdemPreparacaoResumo(
     string? MoradaEntrega,
     string Estado,
     decimal? AlturaPaleteCm,
-    DateTime CriadaEm,
+    DateTime RecebidaEm,
     int NPs,
     decimal? VolumeLitros,
     decimal? PesoKg,

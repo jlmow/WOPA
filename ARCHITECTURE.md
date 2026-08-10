@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Estado** | Em desenvolvimento — validado com PoC funcional |
-| **Última atualização** | Motor PS → Ordem de Preparação → Plataforma → Missão implementado e testado de ponta a ponta entre `controller` e `pda`/picking (ver ADR-016) |
+| **Última atualização** | Ordens de Preparação passam a chegar já compostas de outro software (o WOPA só recebe/guarda); P0 reinstaurado com dimensões reais; `schema.sql` reescrito limpo (sem BD instalada ainda) — ver ADR-017 |
 | **Âmbito** | Todos os módulos do projeto WOPA (Warehouse Order & Picking Automation) |
 | **Fonte de negócio autoritativa** | `Requisitos Funcionais, Desenho da Solução e Arquitectura — WOPA v0.4` (agosto 2026), fornecido pelo cliente. Onde este documento e as decisões anteriores registadas aqui entrarem em conflito, **o v0.4 vence** — exceto nos dois pontos explicitamente revistos no ADR-015 (stack do PDA e fronteira de escrita) |
 
@@ -37,7 +37,7 @@ flowchart LR
         db[("SQL Server\nWOPA")]
     end
 
-    ordershub["OrdersHub\n(existente)\npedidos de separação\n-> Ordens de Separação"]
+    ordershub["OrdersHub\n(existente)\ncompõe as Ordens de Preparação"]
     phc["PHC\n(ERP do cliente)"]
 
     controller -- REST/JSON --> orchestrator
@@ -46,17 +46,17 @@ flowchart LR
     pda -- REST/JSON --> orchestrator
 
     orchestrator --> db
-    ordershub -- "POST /api/ordens-separacao (ADR-011)" --> orchestrator
+    ordershub -- "POST /api/ordens-preparacao (ADR-011/017)" --> orchestrator
     orchestrator <-- integração --> phc
 ```
 
 **Princípio inegociável:** nenhum cliente fala diretamente com a base
 de dados ou com sistemas externos. Tudo passa pelo `orchestrator` —
 incluindo o `controller`, que **não tem acesso a bases de dados
-externas** (é só frontend, ver ADR-006). Para as Ordens de Separação
+externas** (é só frontend, ver ADR-006). Para as Ordens de Preparação
 (PHC/OrdersHub) o sentido é o inverso de uma consulta: é o WOPA que
-**recebe**, através de um endpoint próprio do `orchestrator` — ver
-ADR-011.
+**recebe** — já compostas, prontas a tratar das etapas seguintes —
+através de um endpoint próprio do `orchestrator` — ver ADR-011/017.
 
 ---
 
@@ -68,8 +68,8 @@ já existentes neste repositório:
 
 | Módulo | Tipo de posto de trabalho | Responsabilidade (v0.4, seção 6.1) |
 |---|---|---|
-| `orchestrator` | Servidor (sem UI) | **WOPA Orchestrator**: "automação sem intervenção" — pull das células (ADR A.11), tipificação e cubicagem (Anexo A), sequenciamento de missões, geração de tarefas, e integração de fronteira com o OH/ERP (receção de PS, `POST /api/ordens-separacao`). Continua o **único ponto de escrita** na base de dados — ver ADR-015 |
-| `controller` | Desktop (Windows) | **WOPA Controller**: coordenação humana — composição de ordens de preparação e plataformas, atribuição a células, prioridades, gestão de missões incompletas, monitorização integrada. Perfil único de utilizador (supervisor do CL); não precisa de acesso ao ERP para operar |
+| `orchestrator` | Servidor (sem UI) | **WOPA Orchestrator**: "automação sem intervenção" — pull das células (ADR A.11), tipificação e cubicagem (Anexo A), sequenciamento de missões, geração de tarefas, e integração de fronteira com o OH/ERP (receção de Ordens de Preparação já compostas, `POST /api/ordens-preparacao`, ADR-017). Continua o **único ponto de escrita** na base de dados — ver ADR-015 |
+| `controller` | Desktop (Windows) | **WOPA Controller**: coordenação humana — tipificação e despacho de plataformas, atribuição a células, prioridades, gestão de missões incompletas, monitorização integrada. Perfil único de utilizador (supervisor do CL); não precisa de acesso ao ERP para operar. *(A composição de Ordens de Preparação é feita fora do WOPA — ver ADR-017.)* |
 | `core-config` | Desktop (Windows) | **WOPA Core/Config**: biblioteca central com as regras replicáveis (tipificação, cubicagem, empilhamento, slotting, agrupamento — Anexo A) e o painel de parametrização que as alimenta. Regras e parâmetros mantidos separados internamente |
 | `packing` | Posto fixo tipo POS | **WOPA Packing**: posto de célula — conferência por modo (cestos/caixas), montagem da palete final por índice de camada, etiquetagem por cesto. O fecho de uma plataforma dispara o pull da seguinte (ADR A.11) |
 | `pda` | PDA Android (mobilidade) | Um único projeto (ADR-005) com três módulos correspondentes às três apps do v0.4: **PDA Picking** (man-up — execução/validação de picks, implementado), **PDA Transporte** (transporte perpendicular de plataformas entre corredores e células, por implementar), **PDA Abastecimento** (put-away, abastecimento de topos, fluxo P0, por implementar) — ver secção 4.1 e ADR-015 (mantém-se PWA própria, não Kalipso Studio) |
@@ -190,40 +190,44 @@ no desenho final, o `controller` é quem cria as ondas/missões, e o
 
 ### 4.4 Circuito completo: de onde vem uma missão até ao PDA
 
-Confirmado pelo cliente:
+Confirmado pelo cliente (corrigido em ADR-017 — a composição da
+Ordem de Preparação acontece **fora** do WOPA):
 
 ```
-OrdersHub / PHC                          orchestrator                    controller                    pda
-────────────────                         ────────────                    ──────────                    ───
-pedido de separação
+OrdersHub / PHC                    orchestrator                       controller                       pda
+────────────────                   ────────────                       ──────────                       ───
+compõe a Ordem de Preparação
+(PS já agrupados por
+cliente/data/morada)
         │
         ▼
-"Ordens de Separação" ──POST /api/ordens-separacao──▶  guarda (ADR-011)
-   (documento)                                                │
-                                                                ▼
-                                                          lê Ordens   ──cria missão──▶  distribui   ──1 missão──▶  executa
-                                                          pendentes         (regras de       a missão                (offline-first,
-                                                                            negócio,                                 ADR-007)
-                                                                            ADR-010,
-                                                                            a confirmar)
+POST /api/ordens-preparacao ──▶  guarda (ADR-017)
+   (já composta)                        │
+                                         ▼
+                                   supervisor tipifica   ──gera Plataformas──▶  supervisor despacha
+                                   (Anexo A.4/A.5)              (A.8)          (RF-CTL-06) ──cria missão──▶  ──1 missão──▶  executa
+                                                                                                (RF-PIC-01)                  (offline-first,
+                                                                                                                             ADR-007)
 ```
 
-1. **Origem:** os pedidos de separação são feitos no **OrdersHub**
-   (software já existente do cliente), que gera o documento
-   **"Ordens de Separação"**.
-2. **Entrada no WOPA — é o WOPA que recebe, não vai à procura
-   (ADR-011):** independentemente de quem exatamente as envia (PHC ou
-   OrdersHub — por confirmar, ver secção 8), a informação chega por
-   `POST /api/ordens-separacao` no `orchestrator`. Não há consulta
-   direta a nenhuma base de dados externa — nem do `orchestrator`, nem
-   muito menos do `controller` (que é só frontend, sem acesso a bases
-   de dados externas, ADR-006).
-3. **Criação da missão:** o `controller`, a partir das Ordens de
-   Separação recebidas (via API do `orchestrator`), cria as missões —
-   segundo as `RegrasMissao` (ADR-010, ainda uma versão básica
-   proposta, não confirmada) e regras de negócio adicionais que o
-   cliente vai detalhar (ver secção 8). Ainda não implementado — o
-   endpoint do ADR-011 só recebe e guarda por agora.
+1. **Origem:** a composição da Ordem de Preparação (agrupar PS por
+   cliente/data/morada, RF-CTL-02) acontece no **OrdersHub** (ou outro
+   software do cliente) — **não no WOPA**.
+2. **Entrada no WOPA — é o WOPA que recebe, já composta (ADR-017):**
+   independentemente de quem exatamente a envia (PHC ou OrdersHub —
+   por confirmar, ver secção 8), a informação chega por
+   `POST /api/ordens-preparacao` no `orchestrator`, com os PS e as
+   suas linhas já incluídos no pedido. Não há consulta direta a
+   nenhuma base de dados externa — nem do `orchestrator`, nem muito
+   menos do `controller` (que é só frontend, sem acesso a bases de
+   dados externas, ADR-006).
+3. **Tipificação e despacho:** o supervisor, no `controller`, tipifica
+   a ordem recebida (cubica, escolhe o tipo de plataforma, gera as
+   Plataformas — Anexo A.4/A.5/A.8) e despacha cada plataforma
+   (atribui célula, RF-CTL-06) — o que gera a Missão de picking
+   (RF-PIC-01). Feito manualmente, uma ordem/plataforma de cada vez
+   (ver ADR-016/017); ainda não usa `RegrasMissao` (ADR-010) nem tem
+   proposta automática.
 4. **Distribuição ao PDA — uma missão de cada vez:** as missões vão
    para os PDAs **uma a uma**, não em lote. Um PDA só tem **uma missão
    ativa localmente**. Ao terminá-la, vai buscar a seguinte — não
@@ -318,7 +322,7 @@ conflito — ver secção 8 para o trabalho de schema ainda por fazer.
 | Conceito | Definição |
 |---|---|
 | **PS** (pedido de separação) | Unidade de contrato com o ERP. Sem limite de referências. Um PS pode gerar componente P0 (paletes completas) e componente de picking em simultâneo (regra A.3) |
-| **Ordem de preparação** | Agrupamento de PS por cliente, data e morada de entrega. É a unidade que se cubica, se tipifica e se despacha. Composta manualmente pelo supervisor numa fase inicial, com proposta automática mais tarde (RF-CTL-02) |
+| **Ordem de preparação** | Agrupamento de PS por cliente, data e morada de entrega. É a unidade que se cubica, se tipifica e se despacha. **Chega já composta de outro software** (ADR-017) — o WOPA recebe-a e guarda-a; não compõe PS em ordens |
 | **Plataforma** | Veículo físico anónimo e fungível (estrado 120×80) que transporta o trabalho de picking pelos corredores até à célula. Tipada P4/P2/P1 pelos cestos que leva — **P0 não é um tipo de plataforma**, é um fluxo direto reserva→expedição para paletes completas (regra A.3), executado pelo empilhador de abastecimento, fora do circuito de corredores |
 | **Cesto** | Contentor que segrega uma ordem de preparação dentro da plataforma. **Um cesto = uma ordem (invariante)**. Três tamanhos (P4/P2/P1); não se misturam tamanhos na mesma plataforma |
 | **Missão** | Unidade de trabalho atribuída a um operador num centro de trabalho. Tipificada por centro: **picking, packing, transporte, abastecimento, reposição, P0** — não só picking, como modelado até agora |
@@ -335,18 +339,23 @@ conflito — ver secção 8 para o trabalho de schema ainda por fazer.
   ordem por cesto. Podem ser de clientes/moradas/datas diferentes; a
   segregação é garantida pelo cesto, não pela plataforma.
 
-**Dimensões e capacidades dos cestos** (margem de segurança de 20% já
-aplicada — corrige os valores de exemplo usados nas ADR-004/011):
+**Dimensões e capacidades** — a altura real dos cestos (P1/P2/P4) é
+0,40 m, corrigida pelo cliente (o v0.4 assumia 0,50 m); capacidades
+recalculadas com a mesma fórmula do documento (margem de 20%). **P0
+existe** como tipo de plataforma real — palete completa, sem cestos,
+altura 1,30 m — não é um "fluxo sem tipo" como uma leitura inicial do
+v0.4 sugeria (ver ADR-017):
 
-| Cesto | C×L×A (cm) | Bruto (L) | Útil −20% (L) | Cestos por plataforma |
+| Tipo | C×L×A (cm) | Bruto (L) | Útil −20% (L) | Cestos por plataforma |
 |---|---|---|---|---|
-| P1 | 120×80×50 | 480 | 384 | 1 (cesto = plataforma) |
-| P2 | 60×80×50 | 240 | 192 | 2 |
-| P4 | 40×60×50 | 120 | 96 | 4 |
+| P0 | 120×80×130 | — | — (fluxo direto, sem tipificação por volume) | 0 |
+| P1 | 120×80×40 | 384 | 307 | 1 (cesto = plataforma) |
+| P2 | 60×80×40 | 192 | 154 | 2 |
+| P4 | 40×60×40 | 96 | 77 | 4 |
 
 Regra de tipificação (A.4): o tipo é o **menor cesto** onde o volume
-de picking da ordem cabe — P4 até 96 L, P2 até 192 L, P1 até 384 L.
-Acima disso, multi-plataforma `P1(n)`, `n = CEILING(vol / 384L)`,
+de picking da ordem cabe — P4 até 77 L, P2 até 154 L, P1 até 307 L.
+Acima disso, multi-plataforma `P1(n)`, `n = CEILING(vol / 307L)`,
 sempre com plataformas P1 (mesmo quando o resto caberia num cesto
 menor — simplicidade operacional). Cubicagem detalhada em A.1/A.2:
 caixas completas pelo volume da caixa, avulsas por fração proporcional
@@ -446,13 +455,13 @@ começar pela Fase 1 e crescer para a Fase 2.
 | `pda` — offline-first (`picking`) | ✅ PoC funcional | IndexedDB + fila de saída, testado com corte de rede real (ADR-007) |
 | `pda` — indicador de ligação real | ✅ PoC funcional | Verificação por `/health`, presente em todos os ecrãs (ADR-009) |
 | `pda` — módulos `transporte`, `abastecimento` | ⏳ Por começar | Já aparecem no seletor de módulos como "em breve"; seguem a mesma stack e os mesmos princípios de UX do `picking` |
-| `controller` — PS, Ordens de Preparação, Missões | ✅ PoC funcional, ponta a ponta | Três ecrãs reais (não só leitura): compor Ordem de Preparação a partir de PS selecionados, tipificar (gera Plataformas), despachar (gera Missão), e gerir missões (pausar/retomar/fechar/reatribuir) — ver ADR-016. Testado com browser real contra SQL Server real |
+| `controller` — Ordens de Preparação, Missões | ✅ PoC funcional, ponta a ponta | Dois ecrãs reais (não só leitura): tipificar (gera Plataformas) e despachar (gera Missão) Ordens de Preparação já recebidas de outro software, e gerir missões (pausar/retomar/fechar/reatribuir) — ver ADR-016/017. Testado com browser real contra SQL Server real |
 | `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
 | Regras de missão configuráveis | ✅ Persistido em SQL Server | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, agora na tabela `RegrasMissao` (ADR-010/012) |
-| Receção de PS (Ordens de Separação) | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-separacao`, com campos RF-ENT-01 (cliente/canal/morada/data). Ganhou cubicagem/tipificação indicativa (RF-CTL-01) — ver ADR-016 |
+| Receção de Ordens de Preparação | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-preparacao`, recebe a ordem já composta com os PS aninhados (RF-ENT-01: cliente/canal/morada/data). Ganhou cubicagem/tipificação indicativa (RF-CTL-01) — ver ADR-016/017 |
 | Cubicagem/tipificação (Anexo A) | ✅ PoC funcional | `CubicagemService`: A.1 (cubicagem de linha), A.2 (volume de ordem), A.4/A.5 (tipo + decomposição P1(n)), A.8 (índice de camada) — limiares lidos de `TiposPlataforma`, não hardcoded. Testado com SKUs reais |
-| Ordem de Preparação → Plataforma → Missão | ✅ PoC funcional, ponta a ponta | `POST /api/ordens-preparacao` (compor), `POST .../tipificar` (gera Plataformas), `POST /api/plataformas/{id}/despachar` (gera Missão de picking) — ver ADR-016 |
+| Ordem de Preparação → Plataforma → Missão | ✅ PoC funcional, ponta a ponta | `POST /api/ordens-preparacao` (recebe a ordem já composta, com PS aninhados), `POST .../tipificar` (gera Plataformas), `POST /api/plataformas/{id}/despachar` (gera Missão de picking) — ver ADR-016/017 |
 | Missões — máquina de estados (A.13) | ✅ PoC funcional | `Criada → Atribuida → EmExecucao → (Pausada ↔ EmExecucao) → Concluida | FechadaIncompleta`, com motivo de pausa e timestamps; `pausar`/`retomar`/`fechar`/`reatribuir` em `/api/missoes` |
 | `pda` — "próxima missão" | ✅ PoC funcional | `GET /api/picking/mission`/`tasks` resolvem dinamicamente a missão de picking mais antiga ainda ativa, em vez de uma fixa — testado com duas missões em fila |
 | Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso, idempotente (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012/016). O `orchestrator` já lê/escreve nela via EF Core |
@@ -1029,17 +1038,18 @@ começar pela Fase 1 e crescer para a Fase 2.
   validados). Os limiares de volume vêm de `TiposPlataforma` (consulta
   à BD), não são constantes de código — cumpre o requisito explícito
   de A.1/A.4.
-- **Decisão — circuito completo:** `POST /api/ordens-preparacao`
-  (compor, RF-CTL-02) → `POST .../tipificar` (cubica + tipifica + gera
-  Plataformas, RF-CTL-01/05) → `POST /api/plataformas/{id}/despachar`
-  (atribui célula e gera a Missão de picking, RF-CTL-06/RF-PIC-01) →
-  `GET /api/picking/mission`/`tasks` já não servem uma missão fixa,
+- **Decisão — circuito completo (ver correção no ADR-017):**
+  `POST /api/ordens-preparacao` (receber) → `POST .../tipificar`
+  (cubica + tipifica + gera Plataformas, RF-CTL-01/05) →
+  `POST /api/plataformas/{id}/despachar` (atribui célula e gera a
+  Missão de picking, RF-CTL-06/RF-PIC-01) → `GET
+  /api/picking/mission`/`tasks` já não servem uma missão fixa,
   resolvem dinamicamente a mais antiga ainda ativa (ADR-008 "uma de
   cada vez", agora a sério com mais que uma missão possível). O
-  `controller` ganhou três ecrãs reais: `PsPage` (compor), 
-  `OrdensPreparacaoPage` (tipificar/despachar), `MissoesPage` (agora
-  ligada a `/api/missoes`, com pausar/retomar/fechar/reatribuir — A.13
-  — em vez de só leitura).
+  `controller` ganhou ecrãs reais: `OrdensPreparacaoPage`
+  (tipificar/despachar), `MissoesPage` (agora ligada a
+  `/api/missoes`, com pausar/retomar/fechar/reatribuir — A.13 — em vez
+  de só leitura).
 - **Simplificações desta PoC, deliberadas e documentadas** (não é o
   desenho final):
   1. **Sem Cenário B (plataformas partilhadas P2/P4).** O motor só
@@ -1055,9 +1065,10 @@ começar pela Fase 1 e crescer para a Fase 2.
      fazia diferença prática ainda — fica para quando o Cenário B for
      implementado.
   4. **`RegrasMissao` (ADR-010) ainda não entra neste motor** — o
-     despacho é sempre manual, um PS de cada vez, uma plataforma de
-     cada vez. A composição automática de ordens/plataformas
-     (RF-CTL-02/04) fica para depois.
+     despacho de plataformas é sempre manual, uma de cada vez, no
+     `controller`. (A composição de PS em Ordens de Preparação não é
+     manual nem automática no WOPA — ver ADR-017: já chega feita de
+     outro software.)
 - **Validado, não assumido:** todo o circuito foi testado contra uma
   instância SQL Server 2022 real (Docker), incluindo um bug real
   encontrado e corrigido ao testar (não ao rever código): faltava
@@ -1066,10 +1077,69 @@ começar pela Fase 1 e crescer para a Fase 2.
   que precisava de inserir a `Plataforma` nova antes de atualizar a
   linha que aponta para ela, e falhava com violação de FK. Corrigido
   com `HasOne<PlataformaEntity>().WithMany().HasForeignKey(...)`.
-  Depois disso, o circuito completo (PS → compor → tipificar →
-  despachar → `pda` a picar → missão concluída → próxima missão
-  disponível) foi corrido de ponta a ponta com um browser real,
-  incluindo pausar/retomar uma missão a meio.
+  Depois disso, o circuito completo (receber Ordem de Preparação →
+  tipificar → despachar → `pda` a picar → missão concluída → próxima
+  missão disponível) foi corrido de ponta a ponta com um browser real,
+  incluindo pausar/retomar uma missão a meio. **Nota:** esta descrição
+  do circuito ficou desatualizada num ponto — "compor" a partir de PS
+  já existentes no WOPA deixou de existir, ver ADR-017.
+
+### ADR-017 — Ordens de Preparação chegam já compostas; P0 reinstaurado com dimensões reais
+
+- **Contexto:** o cliente corrigiu duas suposições feitas a partir do
+  documento de requisitos v0.4:
+  1. As **Ordens de Preparação já chegam compostas** de outro software
+     — o agrupamento de PS por cliente/data/morada (RF-CTL-02) não é
+     feito no WOPA. O WOPA só tem de **as guardar** para depois tratar
+     das etapas seguintes (cubicar, tipificar, despachar).
+  2. **P0 existe como tipo de plataforma real**, com dimensões
+     conhecidas: palete completa, altura 1,30 m. A **P1** (plataforma
+     com 1 cesto, "cesto completo") tem altura real de 0,40 m — o
+     v0.4 assumia 0,50 m para todos os tipos de cesto. Isto contraria a
+     framing do ADR-015 ("P0 não é um tipo de plataforma") — o cliente
+     tem primazia sobre a leitura que fiz do documento.
+- **Decisão:**
+  1. `POST /api/ordens-preparacao` deixou de compor a partir de PS já
+     existentes no WOPA (`psIds`). Passa a **receber a ordem já
+     composta**, com os PS incluídos no próprio pedido (cliente, data,
+     morada, e a lista de PS com as suas linhas) — grava tudo numa
+     transação e devolve o resumo. Não há mais um ecrã de "selecionar
+     PS e compor" no `controller` — a **PsPage foi removida**;
+     `controller` fica só com **Ordens de Preparação** (recebidas) e
+     **Missões**.
+  2. A tabela `OrdensSeparacao` (PS) deixou de ter campos próprios de
+     cliente/data/morada/canal-de-composição — esses vivem só na
+     `OrdensPreparacao` que a contém; `OrdemPreparacaoId` passou a
+     `NOT NULL` (um PS nunca existe solto). Removida também a coluna
+     vestigial `MissaoId` (nunca foi usada em código nenhum).
+  3. `TiposPlataforma` reganha a linha `P0` (palete completa, sem
+     cestos) com altura 1,30 m. `P1`/`P2`/`P4` corrigidos para altura
+     0,40 m (eram 0,50 m). As capacidades úteis (secção 4.7 do v0.4)
+     foram recalculadas com a mesma fórmula do documento (bruto × 0,80
+     de margem) para a altura real: **P1 307 L** (era 384),
+     **P2 154 L** (era 192), **P4 77 L** (era 96). `P0` fica com
+     capacidade útil 0 — não participa na tipificação por volume
+     (A.4), continua a ser extraído antes por múltiplos de palete
+     completa (A.3, ainda por implementar).
+- **Porquê recalcular as capacidades e não só a altura:** a capacidade
+  útil de cada cesto (secção 4.7 do v0.4) é derivada da geometria
+  (comprimento × largura × altura × margem) — corrigir só a altura e
+  deixar a capacidade antiga teria criado uma inconsistência
+  silenciosa entre o que a tabela diz e o que a tipificação (A.4)
+  calcularia se repetisse a fórmula. Sinalizo este recálculo
+  explicitamente para o cliente poder confirmar a aritmética, não é um
+  valor que o cliente tenha dado diretamente.
+- **Porquê schema limpo em vez de mais `ALTER TABLE`:** a base de
+  dados ainda não foi criada em nenhum servidor do cliente — não há
+  nada para migrar. `database/schema.sql` foi reescrito com cada
+  tabela já no seu formato final (sem os blocos `ALTER TABLE ADD`
+  acumulados do ADR-016), reordenado para que as chaves estrangeiras
+  se resolvam na própria `CREATE TABLE` sem remendos depois. Validado
+  de novo contra uma instância SQL Server 2022 real (Docker, base de
+  dados recriada do zero) — script correu limpo, idempotente à
+  segunda execução, e o circuito completo (receber Ordem de Preparação
+  com PS aninhados → tipificar → despachar) voltou a ser testado com
+  sucesso depois da reescrita.
 
 ---
 
@@ -1114,17 +1184,16 @@ começar pela Fase 1 e crescer para a Fase 2.
   prática.
 - Limite de armazenamento local do IndexedDB e política de limpeza de
   missões antigas já sincronizadas no dispositivo.
-- **PHC vs. OrdersHub** (ADR-008/011): já não é "quem se consulta" —
-  passou a "quem chama" `POST /api/ordens-separacao`. Falta confirmar
-  se é o PHC, o OrdersHub, ou os dois, e se é uma integração direta ou
-  passa por um conector/middleware intermédio.
-- **Composição/tipificação ainda manual (ADR-016):** o `controller` já
-  cria Ordens de Preparação, tipifica e despacha a sério — mas a
-  composição de PS em ordens é sempre manual (RF-CTL-02 só tem a
-  primeira metade: falta a proposta automática de agrupamento) e o
-  motor não usa `RegrasMissao` (ADR-010) para nada ainda — cada
-  despacho é um PS/plataforma de cada vez, sem lote nem critério de
-  agrupamento automático.
+- **PHC vs. OrdersHub** (ADR-008/011/017): já não é "quem se consulta"
+  — passou a "quem chama" `POST /api/ordens-preparacao`, já com a
+  ordem composta. Falta confirmar se é o PHC, o OrdersHub, ou os dois,
+  e se é uma integração direta ou passa por um conector/middleware
+  intermédio.
+- **Despacho ainda um a um, sem `RegrasMissao` (ADR-016/017):** o
+  `controller` já tipifica e despacha a sério Ordens de Preparação
+  recebidas — mas cada tipificação/despacho é feito manualmente, uma
+  ordem/plataforma de cada vez, e o motor não usa `RegrasMissao`
+  (ADR-010) para nada ainda (sem lote, sem critério automático).
 - **"Próxima missão": critério de atribuição.** `GET
   /api/picking/mission`/`tasks` já resolvem dinamicamente a missão
   mais antiga ainda ativa (ADR-016) em vez de uma fixa — mas sempre a

@@ -5,24 +5,26 @@
     Cria a base de dados "WOPA" com todas as tabelas num único schema
     (dbo) — decisão do cliente: mais simples de gerir na prática do que
     separar por módulo, sobretudo havendo tabelas partilhadas entre
-    aplicações (ver ADR-003, atualizado).
+    aplicações (ver ADR-003).
 
-    Modelo de domínio alinhado com o documento de requisitos v0.4
-    (ADR-015): PS (OrdensSeparacao) → Ordem de Preparação
-    (OrdensPreparacao) → Plataforma (Plataformas) → Missão (MISSAO),
-    com tipificação/cubicagem calculada pelo `orchestrator` a partir de
-    dados mestre de artigo (Artigos) — Anexo A do documento.
+    Modelo de domínio alinhado com o documento de requisitos v0.4 e com
+    as correções diretas do cliente (ADR-015/016/017): a "Ordem de
+    Preparação" (OrdensPreparacao) chega já composta de outro software
+    — o WOPA só a recebe e guarda (POST /api/ordens-preparacao) — a
+    partir daí é que trata da tipificação (gera Plataformas) e do
+    despacho (gera Missões).
 
     Como correr:
       sqlcmd -S <servidor> -E -i schema.sql
     ou abrir no SQL Server Management Studio / Azure Data Studio e
     executar (F5).
 
-    Seguro para voltar a correr: cada CREATE está guardado por um
-    IF NOT EXISTS, cada ALTER que acrescenta colunas a tabelas
-    existentes está guardado por sys.columns, e o seed usa MERGE /
-    verificação de existência — por isso não duplica dados nem falha se
-    o script for executado mais que uma vez.
+    Script limpo, não uma migração: como a base de dados ainda não
+    existe em nenhum servidor do cliente, cada tabela é criada já com
+    o seu conjunto final de colunas — sem blocos ALTER TABLE a
+    remendar um schema anterior. Ainda assim seguro para voltar a
+    correr (cada CREATE está guardado por um IF NOT EXISTS e o seed usa
+    MERGE / verificação de existência).
 
     NOTA: este script é o schema-alvo; o `orchestrator` já liga a ele a
     sério via EF Core (ver ARCHITECTURE.md ADR-012) — validado contra
@@ -33,9 +35,8 @@
     Convenção de nomes: TER, US, ALV, CESTOS, MISSAO, SL, SA e CM são
     nomes de tabela pedidos explicitamente pelo cliente (não apenas
     códigos de referência) — mantidos exatamente assim. As restantes
-    tabelas (incluindo as novas desta versão: Artigos, OrdensPreparacao,
-    Plataformas) usam nomes descritivos por não terem código pedido —
-    ver ARCHITECTURE.md ADR-015 para a justificação.
+    tabelas (incluindo Artigos, OrdensPreparacao, Plataformas) usam
+    nomes descritivos por não terem código pedido.
 */
 
 SET NOCOUNT ON;
@@ -176,7 +177,8 @@ GO
 -- 8. Artigos
 --    Dados mestre de artigo (RF-ENT-03) — base da cubicagem (Anexo
 --    A.1) e do teste de qualidade de ficha (A.6). Recebidos via
---    integração com o ERP, tal como os PS — ver POST /api/artigos.
+--    integração com o ERP, tal como as Ordens de Preparação — ver
+--    POST /api/artigos.
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Artigos' AND schema_id = SCHEMA_ID(N'dbo'))
@@ -200,36 +202,30 @@ GO
 
 -------------------------------------------------------------------------
 -- 9. TiposPlataforma
---    P1/P2/P4 — dimensões e capacidade útil (margem de 20% já
---    aplicada). P0 NÃO é um tipo de plataforma — é o fluxo direto de
---    paletes completas reserva→expedição (ver ARCHITECTURE.md secção
---    4.7 / ADR-015); não entra nesta tabela.
+--    P0 = palete completa (fluxo direto reserva->expedição, sem
+--    passar pelos corredores — Anexo A.3), altura 1,30 m, sem cestos.
+--    P1/P2/P4 = plataforma com 1/2/4 cestos, altura real 0,40 m
+--    (corrigida pelo cliente — o v0.4 assumia 0,50 m). Capacidades
+--    úteis recalculadas com a mesma fórmula da secção 4.7 do v0.4
+--    (bruto × 0,80 de margem) para a altura real — ver ARCHITECTURE.md
+--    ADR-017.
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'TiposPlataforma' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
     CREATE TABLE dbo.TiposPlataforma
     (
-        Codigo                NVARCHAR(10)  NOT NULL PRIMARY KEY,  -- P1, P2, P4
+        Codigo                NVARCHAR(10)  NOT NULL PRIMARY KEY,  -- P0, P1, P2, P4
         Descricao             NVARCHAR(100) NOT NULL,
         ComprimentoMm         INT           NOT NULL,
         LarguraMm             INT           NOT NULL,
         AlturaMm              INT           NOT NULL,
-        CestosPorPlataforma   INT           NOT NULL DEFAULT (1),
-        CapacidadeUtilLitros  INT           NOT NULL DEFAULT (0)   -- capacidade do cesto, já com margem de 20% (secção 4.7)
+        CestosPorPlataforma   INT           NOT NULL DEFAULT (0),  -- 0 para P0 (palete completa, sem cestos)
+        -- 0 para P0: não participa na tipificação por volume (A.4) —
+        -- é extraído antes, por múltiplos de palete completa (A.3).
+        CapacidadeUtilLitros  INT           NOT NULL DEFAULT (0)
     );
 END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.TiposPlataforma') AND name = N'CapacidadeUtilLitros')
-    ALTER TABLE dbo.TiposPlataforma ADD CapacidadeUtilLitros INT NOT NULL DEFAULT (0);
-GO
-
--- P0 deixou de ser um tipo de plataforma (ADR-015) — remove-se se tiver
--- sido criado por uma versão anterior deste script. Não há linhas de
--- seed que o referenciem, por isso é seguro apagar.
-IF EXISTS (SELECT 1 FROM dbo.TiposPlataforma WHERE Codigo = N'P0')
-    DELETE FROM dbo.TiposPlataforma WHERE Codigo = N'P0';
 GO
 
 -------------------------------------------------------------------------
@@ -280,11 +276,13 @@ GO
 
 -------------------------------------------------------------------------
 -- 12. OrdensPreparacao
---     "Ordem de preparação" do documento de requisitos v0.4: agrupa
---     PS (OrdensSeparacao) por cliente/data/morada de entrega. É a
---     unidade que se cubica, se tipifica (gera Plataformas) e se
---     despacha (RF-CTL-02/05/06). Composta manualmente pelo supervisor
---     na v1 — sem proposta automática de agrupamento ainda.
+--     "Ordem de preparação" do documento de requisitos v0.4: chega já
+--     composta de outro software (agrupamento de PS por
+--     cliente/data/morada já feito lá) — o WOPA só a recebe e guarda
+--     via POST /api/ordens-preparacao. É a partir daqui que o WOPA
+--     trata das etapas seguintes: cubicar, tipificar (gerar
+--     Plataformas) e despachar (RF-CTL-01/05/06) — ver ARCHITECTURE.md
+--     ADR-017.
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensPreparacao' AND schema_id = SCHEMA_ID(N'dbo'))
@@ -298,84 +296,13 @@ BEGIN
         -- Aberta | Tipificada | Despachada
         Estado          NVARCHAR(20)  NOT NULL DEFAULT (N'Aberta'),
         AlturaPaleteCm  DECIMAL(6,2)  NULL,     -- RF-CTL-05 — determina o padrão de empilhamento (A.8)
-        CriadaEm        DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME())
+        RecebidaEm      DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME())
     );
 END
 GO
 
 -------------------------------------------------------------------------
--- 13. OrdensSeparacao + OrdensSeparacaoLinhas
---     "PS" (pedido de separação) do documento de requisitos v0.4.
---     Independentemente da origem (PHC ou OrdersHub), a informação é
---     escrita aqui através de POST /api/ordens-separacao (ADR-011).
---     Ganhou os campos de RF-ENT-01 (canal/cliente/morada/data) e a
---     ligação a OrdensPreparacao quando o supervisor compõe a ordem.
--------------------------------------------------------------------------
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacao' AND schema_id = SCHEMA_ID(N'dbo'))
-BEGIN
-    CREATE TABLE dbo.OrdensSeparacao
-    (
-        Id                NVARCHAR(50)  NOT NULL PRIMARY KEY,
-        NumeroDocumento   NVARCHAR(50)  NOT NULL,
-        -- PHC | OrdersHub | ... (a confirmar — ADR-008)
-        Origem            NVARCHAR(20)  NOT NULL,
-        RecebidaEm        DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
-        Processada        BIT           NOT NULL DEFAULT (0),
-        MissaoId          NVARCHAR(50)  NULL
-    );
-END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensSeparacao') AND name = N'Cliente')
-    ALTER TABLE dbo.OrdensSeparacao ADD
-        Cliente             NVARCHAR(200) NULL,
-        DataEntrega         DATE          NULL,
-        MoradaEntrega       NVARCHAR(300) NULL,
-        -- ONLINE | B2B | FISICAS | CNUS (secção 2.1)
-        Canal               NVARCHAR(20)  NULL,
-        OrdemPreparacaoId   NVARCHAR(50)  NULL;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_OrdensSeparacao_OrdemPreparacao')
-BEGIN
-    ALTER TABLE dbo.OrdensSeparacao
-        ADD CONSTRAINT FK_OrdensSeparacao_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.OrdensPreparacao (Id);
-END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacaoLinhas' AND schema_id = SCHEMA_ID(N'dbo'))
-BEGIN
-    CREATE TABLE dbo.OrdensSeparacaoLinhas
-    (
-        Id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
-        OrdemSeparacaoId    NVARCHAR(50)  NOT NULL,
-        Sku                 NVARCHAR(50)  NOT NULL,
-        Quantidade          INT           NOT NULL,
-        AlveoloId           NVARCHAR(50)  NULL,
-
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Ordem FOREIGN KEY (OrdemSeparacaoId) REFERENCES dbo.OrdensSeparacao (Id),
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
-        CONSTRAINT CK_OrdensSeparacaoLinhas_Quantidade CHECK (Quantidade > 0)
-    );
-END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacaoLinhas_OrdemId' AND object_id = OBJECT_ID(N'dbo.OrdensSeparacaoLinhas'))
-    CREATE INDEX IX_OrdensSeparacaoLinhas_OrdemId ON dbo.OrdensSeparacaoLinhas (OrdemSeparacaoId);
-GO
-
--- Atribuída pela tipificação (A.5): a que plataforma esta linha de PS
--- foi destinada. Simplificação da PoC — a distribuição de linhas por
--- plataforma quando uma ordem gera várias (P1(n)) é round-robin, não o
--- critério real por camada/peso (ainda uma "DECISÃO PENDENTE" do
--- documento v0.4, ver ARCHITECTURE.md secção 8).
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensSeparacaoLinhas') AND name = N'PlataformaId')
-    ALTER TABLE dbo.OrdensSeparacaoLinhas ADD PlataformaId NVARCHAR(50) NULL;
-GO
-
--------------------------------------------------------------------------
--- 14. Plataformas
+-- 13. Plataformas
 --     Geradas pela tipificação de uma Ordem de Preparação (Anexo
 --     A.4/A.5). Uma ordem ≥P1 gera várias plataformas mono-ordem,
 --     cada uma com o seu índice de camada (A.8) — a composição
@@ -409,18 +336,69 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Plataformas_OrdemPrep
     CREATE INDEX IX_Plataformas_OrdemPreparacaoId ON dbo.Plataformas (OrdemPreparacaoId);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_OrdensSeparacaoLinhas_Plataforma')
+-------------------------------------------------------------------------
+-- 14. OrdensSeparacao + OrdensSeparacaoLinhas
+--     "PS" (pedido de separação) do documento de requisitos v0.4:
+--     chegam sempre dentro de uma Ordem de Preparação já composta (ver
+--     tabela 12) — não há um fluxo separado de PS "soltos" à espera de
+--     agrupamento no WOPA.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacao' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    ALTER TABLE dbo.OrdensSeparacaoLinhas
-        ADD CONSTRAINT FK_OrdensSeparacaoLinhas_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id);
+    CREATE TABLE dbo.OrdensSeparacao
+    (
+        Id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        OrdemPreparacaoId   NVARCHAR(50)  NOT NULL,
+        NumeroDocumento     NVARCHAR(50)  NOT NULL,
+        -- PHC | OrdersHub | ... (a confirmar — ADR-008)
+        Origem              NVARCHAR(20)  NOT NULL,
+        -- ONLINE | B2B | FISICAS | CNUS (secção 2.1)
+        Canal               NVARCHAR(20)  NULL,
+        RecebidaEm          DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
+
+        CONSTRAINT FK_OrdensSeparacao_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.OrdensPreparacao (Id)
+    );
 END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacao_OrdemPreparacaoId' AND object_id = OBJECT_ID(N'dbo.OrdensSeparacao'))
+    CREATE INDEX IX_OrdensSeparacao_OrdemPreparacaoId ON dbo.OrdensSeparacao (OrdemPreparacaoId);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacaoLinhas' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.OrdensSeparacaoLinhas
+    (
+        Id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        OrdemSeparacaoId    NVARCHAR(50)  NOT NULL,
+        Sku                 NVARCHAR(50)  NOT NULL,
+        Quantidade          INT           NOT NULL,
+        AlveoloId           NVARCHAR(50)  NULL,
+        -- Atribuída pela tipificação (A.5): a que plataforma esta linha
+        -- foi destinada. Distribuição round-robin quando a ordem gera
+        -- várias plataformas — simplificação da PoC, ver
+        -- ARCHITECTURE.md secção 8.
+        PlataformaId        NVARCHAR(50)  NULL,
+
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Ordem FOREIGN KEY (OrdemSeparacaoId) REFERENCES dbo.OrdensSeparacao (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
+        CONSTRAINT CK_OrdensSeparacaoLinhas_Quantidade CHECK (Quantidade > 0)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacaoLinhas_OrdemId' AND object_id = OBJECT_ID(N'dbo.OrdensSeparacaoLinhas'))
+    CREATE INDEX IX_OrdensSeparacaoLinhas_OrdemId ON dbo.OrdensSeparacaoLinhas (OrdemSeparacaoId);
 GO
 
 -------------------------------------------------------------------------
 -- 15. MISSAO
---     Generalizada para os seis centros de trabalho do v0.4 (secção
---     4.5): picking, packing, transporte, abastecimento, reposição,
---     P0 — não só picking. Estados e motivos de pausa seguem A.13.
+--     Cobre os seis centros de trabalho do v0.4 (secção 4.5): picking,
+--     packing, transporte, abastecimento, reposição, P0 — só o motor
+--     de picking está implementado por agora (ver ARCHITECTURE.md
+--     secção 8). Estados e motivos de pausa seguem A.13.
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MISSAO' AND schema_id = SCHEMA_ID(N'dbo'))
@@ -429,57 +407,35 @@ BEGIN
     (
         Id              NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo          NVARCHAR(30)  NOT NULL,
+        -- Picking | Packing | Transporte | Abastecimento | Reposicao | P0
+        CentroTrabalho  NVARCHAR(20)  NOT NULL DEFAULT (N'Picking'),
         ZonaId          NVARCHAR(50)  NULL,
+        PlataformaId    NVARCHAR(50)  NULL,
         UtilizadorId    NVARCHAR(50)  NULL,   -- operador a quem a missão está atribuída
         TerminalId      NVARCHAR(50)  NULL,   -- PDA que a está a executar
-        -- Pendente | EmProgresso | Concluida (legado — ver CentroTrabalho/Estado abaixo para o vocabulário A.13)
-        Estado          NVARCHAR(20)  NOT NULL DEFAULT (N'Pendente'),
+        -- Criada | Atribuida | EmExecucao | Pausada | Concluida | FechadaIncompleta (A.13)
+        Estado          NVARCHAR(20)  NOT NULL DEFAULT (N'Criada'),
+        -- Rutura | FimTurno | MudancaPrioridade | Avaria (A.13)
+        MotivoPausa     NVARCHAR(30)  NULL,
         CriadaEm        DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
+        AtribuidaEm     DATETIME2     NULL,
+        IniciadaEm      DATETIME2     NULL,
+        PausadaEm       DATETIME2     NULL,
+        RetomadaEm      DATETIME2     NULL,
         ConcluidaEm     DATETIME2     NULL,
 
         CONSTRAINT FK_MISSAO_Zona FOREIGN KEY (ZonaId) REFERENCES dbo.Zonas (Id),
+        CONSTRAINT FK_MISSAO_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
         CONSTRAINT FK_MISSAO_Utilizador FOREIGN KEY (UtilizadorId) REFERENCES dbo.US (Id),
         CONSTRAINT FK_MISSAO_Terminal FOREIGN KEY (TerminalId) REFERENCES dbo.TER (Id)
     );
 END
 GO
 
--- Estado passa a usar o vocabulário A.13 a partir daqui (Criada |
--- Atribuida | EmExecucao | Pausada | Concluida | FechadaIncompleta) —
--- a coluna já existia como NVARCHAR(20), não precisa de ALTER; só o
--- DEFAULT antigo (N'Pendente') fica desatualizado e inofensivo, porque
--- o `orchestrator` passa sempre a definir Estado explicitamente.
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'CentroTrabalho')
-    ALTER TABLE dbo.MISSAO ADD
-        -- Picking | Packing | Transporte | Abastecimento | Reposicao | P0
-        CentroTrabalho  NVARCHAR(20)  NOT NULL DEFAULT (N'Picking'),
-        PlataformaId    NVARCHAR(50)  NULL,
-        -- Rutura | FimTurno | MudancaPrioridade | Avaria
-        MotivoPausa     NVARCHAR(30)  NULL,
-        AtribuidaEm     DATETIME2     NULL,
-        IniciadaEm      DATETIME2     NULL,
-        PausadaEm       DATETIME2     NULL,
-        RetomadaEm      DATETIME2     NULL;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MISSAO_Plataforma')
-BEGIN
-    ALTER TABLE dbo.MISSAO
-        ADD CONSTRAINT FK_MISSAO_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id);
-END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_OrdensSeparacao_Missao')
-BEGIN
-    ALTER TABLE dbo.OrdensSeparacao
-        ADD CONSTRAINT FK_OrdensSeparacao_Missao FOREIGN KEY (MissaoId) REFERENCES dbo.MISSAO (Id);
-END
-GO
-
 -------------------------------------------------------------------------
 -- 16. MissaoLinhas
 --     Uma linha por artigo a picar dentro de uma missão. Corresponde a
---     GET /api/picking/tasks — agora com alvéolo, tipo de plataforma e
+--     GET /api/picking/tasks — com alvéolo, tipo de plataforma e
 --     cestos necessários, em vez de localização em texto livre. (O
 --     cliente não pediu um nome de tabela específico para as linhas,
 --     só para o cabeçalho MISSAO — nome descritivo mantido aqui.)
@@ -496,7 +452,7 @@ BEGIN
         CodigoBarras           NVARCHAR(50)   NOT NULL,
         AlveoloId              NVARCHAR(50)   NULL,       -- de onde se pica; NULL para zonas sem detalhe de alvéolo (ex.: Armazém Automático — ver ARCHITECTURE.md secção 4.6)
         Plataforma             NVARCHAR(30)   NOT NULL,   -- identificador da palete/tote de destino desta missão
-        TipoPlataformaCodigo   NVARCHAR(10)   NOT NULL,   -- P1 | P2 | P4
+        TipoPlataformaCodigo   NVARCHAR(10)   NOT NULL,   -- P0 | P1 | P2 | P4
         CestoId                NVARCHAR(50)   NULL,
         CestosNecessarios      INT            NOT NULL DEFAULT (0),
         QuantidadeAlvo         INT            NOT NULL,
@@ -590,10 +546,11 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 20. Seed — dados de exemplo. Cobre agora o circuito completo do v0.4:
---     Artigo -> PS -> Ordem de Preparação -> Plataforma -> Missão, para
---     que a PoC controller/picking tenha algo real para trabalhar em
---     cima assim que a base de dados for criada.
+-- 20. Seed — dados de exemplo. Cobre o circuito completo: Artigo ->
+--     Ordem de Preparação (já composta, como chegaria de outro
+--     software) -> Plataforma -> Missão, para que a PoC
+--     controller/picking tenha algo real para trabalhar assim que a
+--     base de dados for criada.
 -------------------------------------------------------------------------
 
 MERGE dbo.Zonas AS alvo
@@ -659,22 +616,24 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Id, novo.Codigo, novo.ComprimentoMm, novo.LarguraMm, novo.AlturaMm, novo.QuantidadePorPalete);
 GO
 
--- Dimensões e capacidade útil confirmadas pelo documento de requisitos
--- v0.4 secção 4.7 (margem de 20% já aplicada): P1 384L, P2 192L, P4 96L.
+-- Dimensões confirmadas pelo cliente: P0 (palete completa) 1,30 m de
+-- altura, sem cestos. P1/P2/P4 (plataforma com cestos) 0,40 m de
+-- altura — corrige o valor de 0,50 m assumido no documento v0.4.
+-- Capacidades úteis recalculadas com a mesma fórmula da secção 4.7
+-- (bruto x 0,80 de margem) para a altura real de 40 cm:
+--   P1 120x80x40 = 384 L bruto -> 307 L útil
+--   P2  60x80x40 = 192 L bruto -> 154 L útil
+--   P4  40x60x40 =  96 L bruto ->  77 L útil
+-- P0 não tem capacidade útil (não participa na tipificação por
+-- volume — é extraído antes, por múltiplos de palete completa, A.3).
 MERGE dbo.TiposPlataforma AS alvo
 USING (VALUES
-    (N'P1', N'Plataforma + 1 cesto (120x80cm)', 1200, 800, 500, 1, 384),
-    (N'P2', N'Plataforma + 2 cestos (60x80cm)',  600, 800, 500, 2, 192),
-    (N'P4', N'Plataforma + 4 cestos (40x60cm)',  400, 600, 500, 4,  96)
+    (N'P0', N'Palete completa (fluxo direto)',   1200, 800, 1300, 0,   0),
+    (N'P1', N'Plataforma + 1 cesto (120x80cm)',  1200, 800,  400, 1, 307),
+    (N'P2', N'Plataforma + 2 cestos (60x80cm)',   600, 800,  400, 2, 154),
+    (N'P4', N'Plataforma + 4 cestos (40x60cm)',   400, 600,  400, 4,  77)
 ) AS novo (Codigo, Descricao, ComprimentoMm, LarguraMm, AlturaMm, CestosPorPlataforma, CapacidadeUtilLitros)
 ON alvo.Codigo = novo.Codigo
-WHEN MATCHED THEN UPDATE SET
-    Descricao = novo.Descricao,
-    ComprimentoMm = novo.ComprimentoMm,
-    LarguraMm = novo.LarguraMm,
-    AlturaMm = novo.AlturaMm,
-    CestosPorPlataforma = novo.CestosPorPlataforma,
-    CapacidadeUtilLitros = novo.CapacidadeUtilLitros
 WHEN NOT MATCHED THEN
     INSERT (Codigo, Descricao, ComprimentoMm, LarguraMm, AlturaMm, CestosPorPlataforma, CapacidadeUtilLitros)
     VALUES (novo.Codigo, novo.Descricao, novo.ComprimentoMm, novo.LarguraMm, novo.AlturaMm, novo.CestosPorPlataforma, novo.CapacidadeUtilLitros);
@@ -714,9 +673,11 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Sku, novo.Ean, novo.Descricao, novo.UnidadesPorCaixa, novo.ComprimentoCaixaCm, novo.LarguraCaixaCm, novo.AlturaCaixaCm, novo.PesoUnitarioKg, novo.ClasseEmpilhamento, novo.CaixasPorPaleteCompleta);
 GO
 
--- Ordem de preparação de exemplo, já tipificada e despachada, com a
--- plataforma e a missão de picking correspondentes — para que o `pda`
--- tenha sempre uma missão real para executar assim que a BD é criada.
+-- Ordem de preparação de exemplo — simula o que chegaria já composta
+-- de outro software (cliente/data/morada e os PS que a compõem já
+-- decididos lá), tipificada e despachada, com a plataforma e a missão
+-- de picking correspondentes — para que o `pda` tenha sempre uma
+-- missão real para executar assim que a BD é criada.
 IF NOT EXISTS (SELECT 1 FROM dbo.OrdensPreparacao WHERE Id = N'op-0001')
 BEGIN
     INSERT INTO dbo.OrdensPreparacao (Id, Cliente, DataEntrega, MoradaEntrega, Estado, AlturaPaleteCm)
@@ -726,8 +687,8 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.OrdensSeparacao WHERE Id = N'ps-0001')
 BEGIN
-    INSERT INTO dbo.OrdensSeparacao (Id, NumeroDocumento, Origem, Processada, Cliente, DataEntrega, MoradaEntrega, Canal, OrdemPreparacaoId)
-    VALUES (N'ps-0001', N'PS-2026-0001', N'PHC', CAST(1 AS BIT), N'Cliente de exemplo, Lda.', DATEADD(DAY, 2, CAST(SYSUTCDATETIME() AS DATE)), N'Rua Exemplo 123, Porto', N'B2B', N'op-0001');
+    INSERT INTO dbo.OrdensSeparacao (Id, OrdemPreparacaoId, NumeroDocumento, Origem, Canal)
+    VALUES (N'ps-0001', N'op-0001', N'PS-2026-0001', N'PHC', N'B2B');
 END
 GO
 
@@ -752,12 +713,12 @@ GO
 
 MERGE dbo.MISSAO AS alvo
 USING (VALUES
-    (N'missao-m0142', N'M-0142', N'zona-a', N'us-001', N'ter-001', N'Atribuida', N'Picking', N'plat-0001')
-) AS novo (Id, Codigo, ZonaId, UtilizadorId, TerminalId, Estado, CentroTrabalho, PlataformaId)
+    (N'missao-m0142', N'M-0142', N'Picking', N'zona-a', N'plat-0001', N'us-001', N'ter-001', N'Atribuida')
+) AS novo (Id, Codigo, CentroTrabalho, ZonaId, PlataformaId, UtilizadorId, TerminalId, Estado)
 ON alvo.Id = novo.Id
 WHEN NOT MATCHED THEN
-    INSERT (Id, Codigo, ZonaId, UtilizadorId, TerminalId, Estado, CentroTrabalho, PlataformaId, AtribuidaEm)
-    VALUES (novo.Id, novo.Codigo, novo.ZonaId, novo.UtilizadorId, novo.TerminalId, novo.Estado, novo.CentroTrabalho, novo.PlataformaId, SYSUTCDATETIME());
+    INSERT (Id, Codigo, CentroTrabalho, ZonaId, PlataformaId, UtilizadorId, TerminalId, Estado, AtribuidaEm)
+    VALUES (novo.Id, novo.Codigo, novo.CentroTrabalho, novo.ZonaId, novo.PlataformaId, novo.UtilizadorId, novo.TerminalId, novo.Estado, SYSUTCDATETIME());
 GO
 
 MERGE dbo.MissaoLinhas AS alvo

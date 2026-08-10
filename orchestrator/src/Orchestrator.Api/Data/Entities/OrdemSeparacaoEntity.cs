@@ -2,24 +2,19 @@ namespace Orchestrator.Api.Data.Entities;
 
 /// <summary>
 /// Tabela orchestrator.OrdensSeparacao — "PS" (pedido de separação) do
-/// documento de requisitos v0.4 (ADR-011/ADR-015). Ganhou os campos de
-/// RF-ENT-01 (canal/cliente/morada/data) e a ligação a
-/// OrdensPreparacao quando o supervisor a agrupa.
+/// documento de requisitos v0.4. Chega sempre dentro de uma Ordem de
+/// Preparação já composta por outro software (ADR-017) — não existe
+/// como registo solto à espera de agrupamento no WOPA.
 /// </summary>
 public class OrdemSeparacaoEntity
 {
     public string Id { get; set; } = null!;
+    public string OrdemPreparacaoId { get; set; } = null!;
     public string NumeroDocumento { get; set; } = null!;
     public string Origem { get; set; } = null!;
-    public DateTime RecebidaEm { get; set; } = DateTime.UtcNow;
-    public bool Processada { get; set; }
-    public string? MissaoId { get; set; }
-    public string? Cliente { get; set; }
-    public DateOnly? DataEntrega { get; set; }
-    public string? MoradaEntrega { get; set; }
     /// <summary>ONLINE | B2B | FISICAS | CNUS (secção 2.1).</summary>
     public string? Canal { get; set; }
-    public string? OrdemPreparacaoId { get; set; }
+    public DateTime RecebidaEm { get; set; } = DateTime.UtcNow;
 
     public List<OrdemSeparacaoLinhaEntity> Linhas { get; set; } = new();
 }

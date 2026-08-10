@@ -6,12 +6,13 @@ using Orchestrator.Api.Tipificacao;
 namespace Orchestrator.Api.OrdensPreparacao;
 
 /// <summary>
-/// "Ordem de preparação" do documento de requisitos v0.4 (ADR-015):
-/// agrupa PS por cliente/data/morada (RF-CTL-02), cubica-se, tipifica-se
-/// (gera Plataformas, RF-CTL-01/A.4/A.5) e é despachada (ver
-/// PlataformasEndpoints). Composição manual pelo supervisor nesta
-/// versão — sem proposta automática de agrupamento (fica para além do
-/// MVP, ver ARCHITECTURE.md secção 8).
+/// "Ordem de preparação" do documento de requisitos v0.4 (ADR-017):
+/// chega já composta de outro software — agrupamento de PS por
+/// cliente/data/morada já feito lá. O WOPA só a recebe e guarda
+/// (POST); a partir daí é que trata das etapas seguintes: cubica-se,
+/// tipifica-se (gera Plataformas, RF-CTL-01/A.4/A.5) e é despachada
+/// (ver PlataformasEndpoints). Não existe fluxo de composição manual
+/// no WOPA.
 /// </summary>
 public static class OrdensPreparacaoEndpoints
 {
@@ -23,37 +24,73 @@ public static class OrdensPreparacaoEndpoints
         {
             if (string.IsNullOrWhiteSpace(pedido.Cliente))
                 return Results.BadRequest(new { erro = "cliente é obrigatório." });
-            if (pedido.PsIds is not { Count: > 0 })
-                return Results.BadRequest(new { erro = "É preciso indicar pelo menos um PS." });
+            if (pedido.Ps is not { Count: > 0 })
+                return Results.BadRequest(new { erro = "A ordem de preparação tem de ter pelo menos um PS." });
+            foreach (var ps in pedido.Ps)
+            {
+                if (string.IsNullOrWhiteSpace(ps.NumeroDocumento))
+                    return Results.BadRequest(new { erro = "Todos os PS têm de ter numeroDocumento." });
+                if (string.IsNullOrWhiteSpace(ps.Origem))
+                    return Results.BadRequest(new { erro = "Todos os PS têm de ter origem." });
+                if (ps.Linhas is not { Count: > 0 })
+                    return Results.BadRequest(new { erro = $"O PS {ps.NumeroDocumento} tem de ter pelo menos uma linha." });
+                if (ps.Linhas.Any(l => l.Quantidade <= 0))
+                    return Results.BadRequest(new { erro = $"Todas as linhas do PS {ps.NumeroDocumento} têm de ter quantidade maior que zero." });
+            }
 
-            var ps = await db.OrdensSeparacao.Where(o => pedido.PsIds.Contains(o.Id)).ToListAsync();
-            if (ps.Count != pedido.PsIds.Count)
-                return Results.BadRequest(new { erro = "Um ou mais PS indicados não existem." });
-            if (ps.Any(o => o.OrdemPreparacaoId is not null))
-                return Results.Conflict(new { erro = "Um ou mais PS já pertencem a outra Ordem de Preparação." });
+            // AlveoloCodigo é opcional (nem toda origem o vai ter disponível —
+            // ADR-011); resolve-se para AlveoloId quando existir e for
+            // reconhecido, sem bloquear a receção se não for.
+            var codigosDados = pedido.Ps
+                .SelectMany(ps => ps.Linhas)
+                .Where(l => l.AlveoloCodigo is not null)
+                .Select(l => l.AlveoloCodigo!)
+                .Distinct()
+                .ToList();
+            var alveolosPorCodigo = await db.Alveolos
+                .Where(a => codigosDados.Contains(a.Codigo))
+                .ToDictionaryAsync(a => a.Codigo, a => a.Id);
 
-            var entidade = new OrdemPreparacaoEntity
+            var ordem = new OrdemPreparacaoEntity
             {
                 Id = Guid.NewGuid().ToString("n"),
                 Cliente = pedido.Cliente,
                 DataEntrega = pedido.DataEntrega,
                 MoradaEntrega = pedido.MoradaEntrega,
             };
-            db.OrdensPreparacao.Add(entidade);
+            db.OrdensPreparacao.Add(ordem);
 
-            foreach (var p in ps)
-                p.OrdemPreparacaoId = entidade.Id;
+            foreach (var ps in pedido.Ps)
+            {
+                db.OrdensSeparacao.Add(new OrdemSeparacaoEntity
+                {
+                    Id = Guid.NewGuid().ToString("n"),
+                    OrdemPreparacaoId = ordem.Id,
+                    NumeroDocumento = ps.NumeroDocumento,
+                    Origem = ps.Origem,
+                    Canal = ps.Canal,
+                    Linhas = ps.Linhas.Select(l => new OrdemSeparacaoLinhaEntity
+                    {
+                        Id = Guid.NewGuid().ToString("n"),
+                        Sku = l.Sku,
+                        Quantidade = l.Quantidade,
+                        AlveoloId = l.AlveoloCodigo is { } codigo && alveolosPorCodigo.TryGetValue(codigo, out var alveoloId)
+                            ? alveoloId
+                            : null,
+                    }).ToList(),
+                });
+            }
 
             await db.SaveChangesAsync();
 
-            var dto = await ParaResumoAsync(db, entidade.Id, new CubicagemService(db));
-            return Results.Created($"/api/ordens-preparacao/{entidade.Id}", dto);
+            var dto = await ParaResumoAsync(db, ordem.Id, new CubicagemService(db));
+            return Results.Created($"/api/ordens-preparacao/{ordem.Id}", dto);
         })
-        .WithName("ComporOrdemPreparacao");
+        .WithName("ReceberOrdemPreparacao");
 
         group.MapGet("/", async (WopaDbContext db, CubicagemService cubicagem) =>
         {
-            var ids = await db.OrdensPreparacao.OrderByDescending(o => o.CriadaEm).Select(o => o.Id).ToListAsync();
+            var ids = await db.OrdensPreparacao.OrderByDescending(o => o.RecebidaEm).Select(o => o.Id).ToListAsync();
             var resultado = new List<OrdemPreparacaoResumo>();
             foreach (var id in ids)
             {
@@ -152,7 +189,7 @@ public static class OrdensPreparacaoEndpoints
 
         return new OrdemPreparacaoResumo(
             ordem.Id, ordem.Cliente, ordem.DataEntrega, ordem.MoradaEntrega, ordem.Estado, ordem.AlturaPaleteCm,
-            ordem.CriadaEm, ordem.Ps.Count, volumeLitros, pesoKg, tipoIndicativo,
+            ordem.RecebidaEm, ordem.Ps.Count, volumeLitros, pesoKg, tipoIndicativo,
             ordem.Plataformas.Select(p => new PlataformaResumo(p.Id, p.Codigo, p.TipoPlataformaCodigo, p.IndiceCamada, p.ClasseCamada, p.Estado, p.CelulaDestino)).ToList());
     }
 }

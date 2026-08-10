@@ -17,7 +17,7 @@ export interface OrdemPreparacaoResumo {
   moradaEntrega: string | null;
   estado: "Aberta" | "Tipificada" | "Despachada";
   alturaPaleteCm: number | null;
-  criadaEm: string;
+  recebidaEm: string;
   nPs: number;
   volumeLitros: number | null;
   pesoKg: number | null;
@@ -25,21 +25,11 @@ export interface OrdemPreparacaoResumo {
   plataformas: PlataformaResumo[];
 }
 
-export interface NovaOrdemPreparacaoRequest {
-  cliente: string;
-  dataEntrega: string | null;
-  moradaEntrega: string | null;
-  psIds: string[];
-}
-
 export const ordensPreparacaoApi = {
+  // As Ordens de Preparação chegam já compostas de outro software
+  // (POST /api/ordens-preparacao, feito por esse software) — o
+  // controller só as lista e trata das etapas seguintes.
   listar: (): Promise<OrdemPreparacaoResumo[]> => apiFetch<OrdemPreparacaoResumo[]>("/api/ordens-preparacao"),
-
-  compor: (pedido: NovaOrdemPreparacaoRequest): Promise<OrdemPreparacaoResumo> =>
-    apiFetch<OrdemPreparacaoResumo>("/api/ordens-preparacao", {
-      method: "POST",
-      body: JSON.stringify(pedido),
-    }),
 
   // Anexo A.4/A.5/A.8 — cubica, tipifica e gera as Plataformas.
   tipificar: (id: string, alturaPaleteCm: number | null): Promise<OrdemPreparacaoResumo> =>

@@ -2,9 +2,11 @@ namespace Orchestrator.Api.Data.Entities;
 
 /// <summary>
 /// Tabela orchestrator.OrdensPreparacao — "ordem de preparação" do
-/// documento de requisitos v0.4: agrupa PS (OrdensSeparacao) por
-/// cliente/data/morada de entrega; é a unidade que se cubica, tipifica
-/// (gera Plataformas) e despacha.
+/// documento de requisitos v0.4. Chega já composta de outro software
+/// (agrupamento de PS por cliente/data/morada já feito lá) — o WOPA só
+/// recebe e guarda via POST /api/ordens-preparacao (ADR-017). É a
+/// partir daqui que o WOPA trata das etapas seguintes: cubicar,
+/// tipificar (gerar Plataformas) e despachar.
 /// </summary>
 public class OrdemPreparacaoEntity
 {
@@ -14,7 +16,7 @@ public class OrdemPreparacaoEntity
     public string? MoradaEntrega { get; set; }
     public string Estado { get; set; } = "Aberta";
     public decimal? AlturaPaleteCm { get; set; }
-    public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
+    public DateTime RecebidaEm { get; set; } = DateTime.UtcNow;
 
     public List<OrdemSeparacaoEntity> Ps { get; set; } = new();
     public List<PlataformaEntity> Plataformas { get; set; } = new();

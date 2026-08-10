@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { ordensPreparacaoApi, type OrdemPreparacaoResumo } from "../shared/api/ordensPreparacao";
 import { plataformasApi, type Plataforma } from "../shared/api/plataformas";
 
@@ -10,8 +9,6 @@ const ESTADO_LABEL: Record<OrdemPreparacaoResumo["estado"], string> = {
 };
 
 export function OrdensPreparacaoPage() {
-  const [params] = useSearchParams();
-  const destaque = params.get("destaque");
   const [ordens, setOrdens] = useState<OrdemPreparacaoResumo[]>([]);
   const [plataformas, setPlataformas] = useState<Record<string, Plataforma>>({});
   const [erro, setErro] = useState<string | null>(null);
@@ -62,18 +59,15 @@ export function OrdensPreparacaoPage() {
       <header className="page__header">
         <h1>Ordens de Preparação</h1>
         <p className="page__subtitle">
-          Cubicagem, tipificação (P4/P2/P1/P1(n)) e despacho de plataformas para picking (RF-CTL-01/05/06).
+          Recebidas já compostas de outro software. Cubicagem, tipificação (P4/P2/P1/P1(n)) e despacho de
+          plataformas para picking (RF-CTL-01/05/06).
         </p>
       </header>
 
       {erro && <p className="page__error">{erro}</p>}
 
       {ordens.map((ordem) => (
-        <section
-          key={ordem.id}
-          className={`panel${ordem.id === destaque ? " panel--destaque" : ""}`}
-          data-testid={`op-${ordem.id}`}
-        >
+        <section key={ordem.id} className="panel" data-testid={`op-${ordem.id}`}>
           <div className="panel__header-row">
             <div>
               <h2>{ordem.cliente}</h2>
@@ -174,7 +168,7 @@ export function OrdensPreparacaoPage() {
         </section>
       ))}
 
-      {ordens.length === 0 && !erro && <p className="page__empty">Sem Ordens de Preparação. Compõe uma a partir dos PS.</p>}
+      {ordens.length === 0 && !erro && <p className="page__empty">Sem Ordens de Preparação recebidas.</p>}
     </div>
   );
 }
