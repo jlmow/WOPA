@@ -154,7 +154,11 @@ public static class PickingEndpoints
         Sku = linha.Sku,
         Descricao = linha.Descricao,
         CodigoBarras = linha.CodigoBarras,
-        Localizacao = linha.Alveolo!.Codigo,
+        // Sem Alveolo (ex.: linha do Armazém Automático — sem detalhe de
+        // alvéolo, ver ARCHITECTURE.md secção 4.6): "" por agora. Ainda não
+        // está decidido se estas linhas sequer chegam ao ecrã do pda-picking
+        // (pode ser uma zona sem operação humana) — por implementar.
+        Localizacao = linha.Alveolo?.Codigo ?? string.Empty,
         Plataforma = linha.Plataforma,
         QuantidadeAlvo = linha.QuantidadeAlvo,
         QuantidadeLida = linha.QuantidadeLida,

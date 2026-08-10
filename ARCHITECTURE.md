@@ -27,7 +27,7 @@ flowchart LR
     subgraph Clientes
         controller["controller\n(Windows, layout desktop)"]
         coreconfig["core-config\n(Windows, layout desktop)"]
-        packing["packing\n(POS, Blazor)"]
+        packing["packing\n(POS, PWA — TypeScript + React + Vite)"]
         pda["pda\n(Android, PWA — login → módulos → zona)\npicking · transporte · abastecimento"]
     end
 
@@ -64,7 +64,7 @@ ADR-011.
 | Módulo | Tipo de posto de trabalho | Responsabilidade |
 |---|---|---|
 | `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com o ERP (PHC), e receção das Ordens de Separação (`POST /api/ordens-separacao`) — ver secção 4.4/ADR-008/ADR-011 |
-| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; lê as Ordens de Separação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
+| `controller` | Desktop (Windows) | "Front office": ecrã onde uma pessoa organiza o trabalho das missões e controla a operação — vê o detalhe do que está a ser feito, do que vai entrar e do que falta fazer, e pode **alterar missões manualmente**, fugindo às regras automáticas quando preciso. Lê as Ordens de Separação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
 | `core-config` | Desktop (Windows) | Configuração do sistema (parametrização) |
 | `packing` | Posto fixo tipo POS | Picagem/embalamento de encomendas por operadores num posto fixo |
 | `pda` | PDA Android (mobilidade) | App única com os módulos `picking` (implementado), `transporte` e `abastecimento` (por implementar) — ver secção 4.1 |
@@ -87,9 +87,9 @@ atrito de integração nesse ecossistema, cumprindo o requisito de
 |---|---|---|
 | `orchestrator` | ASP.NET Core Web API (.NET 8), hospedado em IIS | Suporte nativo a IIS; EF Core/Dapper para SQL Server; endpoints REST/JSON; ponto único de integração com o ERP |
 | `controller`, `core-config` | **TypeScript + React + Vite**, layout desktop (ver ADR-006) | Uma só stack de frontend em todo o WOPA; hardware (leitores/impressoras) resolvido sem sair da stack web — ver secção 3.6 |
-| `packing` | Blazor (Server ou WASM), hospedado em IIS | Posto fixo tipo POS; interface web leve, atualização central, compatível com leitor de código de barras em modo teclado |
+| `packing` | **TypeScript + React + Vite** (PWA), hospedado em IIS — ver ADR-006 | Posto fixo tipo POS; mesmo argumento do `pda`: leitor em modo teclado, sem SDK nativo, e agora **uma única stack de frontend em todo o WOPA**, sem exceção |
 | `pda` (módulos `picking`, `transporte`, `abastecimento`) | **PWA — TypeScript + React + Vite** (ver ADR-002) | Instalável no Android, sem SDK nativo, testável de ponta a ponta, atualização centralizada |
-| Base de dados | 1 SQL Server ("WOPA"), com **schema por módulo** (`orchestrator`, `packing`, `pda_picking`, ...) | Cumpre "1 base de dados" mantendo governança e fronteiras claras entre módulos |
+| Base de dados | 1 SQL Server ("WOPA"), **um único schema (`dbo`)** — ver ADR-003 | Simplicidade de gestão; muitas tabelas de referência são partilhadas entre módulos, não pertencem a um só |
 
 ### 3.3 Regra fixa: todo o software Android é PWA
 
@@ -153,9 +153,11 @@ Inspirado em sistemas de picking de armazéns de grande escala (ex.:
 IKEA, Amazon, DHL): o operador nunca escolhe o que fazer a seguir — o
 sistema decide, o operador só executa.
 
-1. **Login** — número de operador (curto, sem password no PDA;
-   validação real fica para quando existir autenticação no
-   `orchestrator`, ver secção 8).
+1. **Login** — número de operador + PIN (ver ADR-013: login é
+   obrigatório como primeiro ecrã em **todo** o software WOPA, não só
+   no `pda`). Hoje o `pda` só pede o número, sem pedir/validar o PIN
+   ainda — falta ligar a validação a sério ao `orchestrator`/tabela
+   `US`, ver secção 8.
 2. **Módulos** — lista dos módulos disponíveis no `pda` (`picking`,
    `transporte`, `abastecimento`); os que ainda não estão implementados
    aparecem visíveis mas desativados ("em breve"), não escondidos.
@@ -270,6 +272,34 @@ Estes princípios foram validados na PoC do módulo `picking` do `pda`
 (ver secção 6): ler o código certo é a única ação do operador — sem
 confirmar, sem escolher a próxima linha manualmente.
 
+### 4.6 Zonas do armazém físico e ordem de picking
+
+Confirmado pelo cliente a partir da planta do armazém:
+
+- **`OUTLET`**, **`ARMAZEM AUTOMATICO`** e **`ARMAZEM (ALVEOLOS)`** são
+  exemplos de zonas reais (mais virão — o cliente vai enviar mais
+  contexto). `ARMAZEM (ALVEOLOS)` tem o detalhe de alvéolo que já
+  temos modelado; `ARMAZEM AUTOMATICO` **não tem** — para essa zona o
+  `orchestrator` só manda "separar isto" sem indicar um alvéolo
+  específico (é provavelmente um sistema automático próprio, tipo
+  AS/RS, a decidir de onde tira o artigo). Refletido no schema:
+  `MissaoLinhas.AlveoloId` passou a **NULL-ável** — deixou de
+  fazer sentido obrigar todas as linhas a terem alvéolo.
+- **Ordem de picking por defeito:** OUTLET primeiro, depois ARMAZÉM
+  AUTOMÁTICO, depois ARMAZÉM (ALVÉOLOS). Mas o cliente foi explícito:
+  este "sempre" é subjetivo — a ordem tem de ser **configurável e
+  flexível**, não uma regra fixa no código. Isto entronca no mecanismo
+  de `RegrasMissao` já existente (ADR-010): a ordem por zona é mais um
+  parâmetro a acrescentar aí quando desenharmos o motor de criação de
+  missões — ainda por implementar (ver secção 8), tal como o resto do
+  motor que lê Ordens de Separação e aplica regras (ADR-011).
+- **Por decidir, ainda sem informação suficiente:** se as linhas do
+  `ARMAZEM AUTOMATICO` chegam sequer a um PDA (pode ser uma zona sem
+  intervenção humana, gerida por um sistema automático que o WOPA só
+  aciona) — a API já não rebenta com estas linhas (`Localizacao` fica
+  `""` quando não há alvéolo), mas o comportamento correto no ecrã
+  ainda não está definido.
+
 ---
 
 ## 5. Comunicação entre módulos
@@ -297,7 +327,7 @@ confirmar, sem escolher a próxima linha manualmente.
 | `controller` | 🚧 Em construção | Scaffold TypeScript/React/Vite, layout desktop (ver ADR-006) |
 | `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
-| Regras de missão configuráveis | ✅ Persistido em SQL Server | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, agora na tabela `orchestrator.RegrasMissao` (ADR-010/012) |
+| Regras de missão configuráveis | ✅ Persistido em SQL Server | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, agora na tabela `RegrasMissao` (ADR-010/012) |
 | Receção de Ordens de Separação | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-separacao`, testado, agora grava mesmo; só recebe e guarda — ainda não cria missões (ADR-011) |
 | Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012). O `orchestrator` já lê/escreve nela via EF Core |
 | Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
@@ -346,14 +376,25 @@ confirmar, sem escolher a próxima linha manualmente.
   podem exigir investigação adicional; até à data não há indicação de
   que isso seja necessário.
 
-### ADR-003 — Uma base de dados, schemas por módulo
+### ADR-003 — Uma base de dados, um único schema (atualizado)
 
 - **Contexto:** requisito do cliente de uma única base de dados SQL
-  Server ("WOPA") para todas as funcionalidades.
-- **Decisão:** uma instância de SQL Server, com um schema dedicado por
-  módulo (`orchestrator`, `packing`, `pda_picking`, ...).
-- **Porquê:** cumpre o requisito de BD única, mantendo fronteiras
-  claras de propriedade dos dados entre módulos.
+  Server ("WOPA") para todas as funcionalidades. A versão original
+  desta decisão propunha um schema por módulo (`orchestrator`,
+  `picking`, ...) — **o cliente pediu para reverter isso**: prefere
+  trabalhar com um único schema. Motivo dado: mais simples de gerir na
+  prática, sobretudo havendo **tabelas partilhadas entre aplicações**
+  (`Zonas`, `TER`, `US`, `ALV`, etc. já são usadas por mais do que um
+  módulo) — separar por schema criava fronteiras artificiais onde a
+  realidade é de dados partilhados.
+- **Decisão:** uma instância de SQL Server, **um único schema
+  (`dbo`)**, todas as tabelas lá dentro. `database/schema.sql` e o
+  `WopaDbContext` (EF Core) já refletem isto — sem prefixo de schema
+  nos nomes das tabelas.
+- **Porquê:** cumpre o requisito de BD única; simplicidade de gestão
+  ganha à separação teórica por módulo, dado que a maior parte das
+  tabelas de referência (zonas, terminais, utilizadores, alvéolos) são
+  genuinamente partilhadas, não pertencem a um módulo só.
 
 ### ADR-004 — Missão de picking com plataforma de destino por linha
 
@@ -430,6 +471,11 @@ confirmar, sem escolher a próxima linha manualmente.
   acesso ao SO que a Web API do browser não cubra (ex.: um periférico
   muito específico sem modo teclado nem WebUSB), reavalia-se nessa
   altura — não há indicação disso agora.
+- **Atualização:** o `packing` (posto fixo tipo POS, antes cotado para
+  Blazor) junta-se também a esta stack única — o cliente confirmou.
+  Mesmo argumento de hardware da secção 3.6 (leitor em modo teclado)
+  aplica-se; deixa de haver nenhuma app WOPA fora de TypeScript +
+  React + Vite. Scaffold do `packing` ainda por fazer.
 
 ### ADR-007 — PDA offline-first: dados locais + fila de saída
 
@@ -548,7 +594,7 @@ confirmar, sem escolher a próxima linha manualmente.
   `MaxPlataformasPorMissao`, `CriterioAgrupamento` (Zona / Encomenda /
   Nenhum) e `CriterioOrdenacao` (Localizacao / Prioridade). Exposto
   pelo `orchestrator` em `GET`/`PUT /api/config/regras-missao`,
-  persistido em `orchestrator.RegrasMissao` no schema SQL (ver
+  persistido em `RegrasMissao` no schema SQL (ver
   `database/schema.sql`). Hoje só valida (`MaxLinhas`/`MaxPlataformas`
   ≥ 1); ainda não há um motor de criação de missões a consumir estas
   regras, porque isso depende de sabermos como as Ordens de Separação
@@ -587,17 +633,17 @@ confirmar, sem escolher a próxima linha manualmente.
      OrdersHub?) ainda está por confirmar, mas a forma de entrada no
      WOPA já não depende dessa resposta.
   2. `database/schema.sql` passa a ter as tabelas
-     `orchestrator.TER`, `.US`, `.ALV`, `.CESTOS`, `.TiposPlataforma`,
+     `TER`, `.US`, `.ALV`, `.CESTOS`, `.TiposPlataforma`,
      `.CM`, `.SL`, `.SA`, e `.OrdensSeparacao`/`.OrdensSeparacaoLinhas`.
-     `picking.MISSAO` é o nome exato pedido pelo cliente para o
-     cabeçalho da missão (`picking.MissaoLinhas`, sem código pedido,
-     manteve o nome descritivo). `picking.MissaoLinhas` passa a
+     `MISSAO` é o nome exato pedido pelo cliente para o
+     cabeçalho da missão (`MissaoLinhas`, sem código pedido,
+     manteve o nome descritivo). `MissaoLinhas` passa a
      referenciar `AlveoloId` (em vez de um texto livre de localização)
      e `TipoPlataformaCodigo`, e ganha `CestoId`/`CestosNecessarios`.
-     `picking.MISSAO` passa a referenciar `UtilizadorId`/`TerminalId`
+     `MISSAO` passa a referenciar `UtilizadorId`/`TerminalId`
      em vez de texto livre.
   3. A regra `CM_ID < 500`/`> 500` está refletida numa coluna
-     calculada (`Tipo`) em `orchestrator.CM`, não só em comentário —
+     calculada (`Tipo`) em `CM`, não só em comentário —
      para não depender de cada consumidor da tabela acertar a regra da
      mesma forma.
 - **Porquê "push" em vez do `orchestrator` consultar PHC/OrdersHub:**
@@ -652,7 +698,7 @@ confirmar, sem escolher a próxima linha manualmente.
   (`PickingEndpoints.ParaDto`), nunca chega ao `pda`.
 - **Idempotência sem snapshot (ADR-007 revisitado):** a versão em
   memória guardava uma cópia do resultado por `operacaoId`. A tabela
-  real `picking.OperacoesProcessadas` só regista *que* uma operação
+  real `OperacoesProcessadas` só regista *que* uma operação
   aconteceu (sem guardar o resultado) — por isso, ao detetar um
   reenvio, o `orchestrator` devolve o **estado atual** da linha em vez
   de um snapshot antigo. É mais simples e continua correto: como só um
@@ -683,15 +729,51 @@ confirmar, sem escolher a próxima linha manualmente.
   de picking deve gerar um movimento de stock. Login do `pda` continua
   sem validar `US.NumeroOperador` a sério (ver secção 8).
 
+### ADR-013 — Login (user + PIN) obrigatório como primeiro ecrã, em todo o software
+
+- **Contexto:** pedido explícito do cliente — tem de se saber sempre
+  quem está a trabalhar em cada software WOPA, seja PDA ou Windows.
+- **Decisão:** **todos** os frontends (`pda`, `controller`,
+  `core-config`, `packing`) têm de abrir sempre no ecrã de login como
+  primeiro passo, sem exceção — não há caminho para usar a app sem
+  login. Esquema: **número de operador + PIN**, contra a tabela `US`
+  (que já tem `NumeroOperador`; ganhou agora o campo `Pin`).
+- **Estado atual:** só o `pda` tem ecrã de login, e mesmo esse só pede
+  o número — não pede nem valida o PIN ainda, e não confirma contra a
+  tabela `US` (aceita qualquer valor). `controller` e `packing` não
+  têm login nenhum hoje. Fica tudo por implementar (ver secção 8).
+- **Segurança do PIN (PoC vs. produção):** o campo `US.Pin` está em
+  texto simples no schema, deliberadamente, para a fase de PoC. Antes
+  de produção tem de ser guardado com hash (nunca texto simples) — a
+  registar como passo obrigatório do trabalho de autenticação (ADR
+  futuro quando o desenho de auth for feito a sério, ver secção 8).
+
 ---
 
 ## 8. Em aberto
 
-- Autenticação/autorização entre clientes e o `orchestrator` (ex.: JWT
-  emitido pelo `orchestrator`, um por dispositivo/utilizador; login do
-  operador no PDA hoje não é validado no backend).
-- Se `packing` precisa de funcionar offline (ligação instável no
-  armazém) — decide entre Blazor Server e WASM.
+- **Mais contexto do armazém a caminho** (o cliente vai enviar) — a
+  planta física, zonas adicionais além de OUTLET/ARMAZÉM
+  AUTOMÁTICO/ARMAZÉM (ALVÉOLOS), e as regras de negócio completas.
+- Motor de ordenação de missões por prioridade de zona (secção 4.6) —
+  configurável, não hardcoded; entronca nas `RegrasMissao` (ADR-010).
+- Comportamento das linhas do `ARMAZEM AUTOMATICO` no `pda` — chegam a
+  um operador humano ou são geridas por um sistema automático à parte?
+- **`controller` — ecrã de missões precisa de crescer**: hoje só lê
+  (tabela read-only); o cliente descreveu-o como "front office" com
+  visão do que está a decorrer/a entrar/por fazer e capacidade de
+  **alterar missões manualmente**, fugindo às regras automáticas —
+  ainda por desenhar/construir.
+- **Login user+PIN em falta em quase todo o lado (ADR-013):** o `pda`
+  pede só o número (sem PIN, sem validar contra `US`); `controller`,
+  `core-config` e `packing` não têm ecrã de login nenhum ainda.
+  Autenticação/autorização entre clientes e o `orchestrator` também
+  por desenhar (ex.: JWT emitido pelo `orchestrator`, um por
+  dispositivo/utilizador). `US.Pin` está em texto simples na PoC —
+  tem de passar a hash antes de produção.
+- `packing` ainda não tem projeto (scaffold por fazer) — decisão de
+  stack já tomada (PWA React/TS/Vite, ADR-006); falta arrancar, e
+  decidir se precisa de funcionar offline como o `pda` (ADR-007).
 - **Connection string real do cliente para o SQL Server de produção**
   (ADR-012) — o `orchestrator` já lê/escreve em SQL Server a sério,
   mas só foi testado contra um contentor Docker local desta sandbox.

@@ -15,7 +15,8 @@ public class MissaoLinhaEntity
     public string Sku { get; set; } = null!;
     public string Descricao { get; set; } = null!;
     public string CodigoBarras { get; set; } = null!;
-    public string AlveoloId { get; set; } = null!;
+    /// <summary>NULL para zonas sem detalhe de alvéolo (ex.: Armazém Automático).</summary>
+    public string? AlveoloId { get; set; }
     public string Plataforma { get; set; } = null!;
     public string TipoPlataformaCodigo { get; set; } = null!;
     public string? CestoId { get; set; }
