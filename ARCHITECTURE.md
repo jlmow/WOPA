@@ -748,6 +748,66 @@ Confirmado pelo cliente a partir da planta do armazém:
   registar como passo obrigatório do trabalho de autenticação (ADR
   futuro quando o desenho de auth for feito a sério, ver secção 8).
 
+### ADR-014 — Lógica de referência do PHC: cubicagem/plataforma e derivação de stock
+
+- **Contexto:** o cliente enviou queries reais correndo hoje contra o
+  PHC, que documentam duas peças de lógica de negócio que o WOPA tem
+  de reproduzir ou substituir:
+  1. **Necessidades de picking e tipificação de plataforma** — uma
+     query sobre `bo`/`bi`/`st` (documentos com `ndos=209` ainda não
+     processados) que agrupa por documento, calcula a cubicagem fiel
+     (caixas completas + fração proporcional dos artigos avulsos) e
+     classifica o resultado em plataformas — `P4`/`P2`/`P1`/`P1(n)` —
+     por volume, sinalizando também artigos com ficha técnica
+     incompleta (sem embalagem/dimensões/peso). É a lógica de origem
+     do `ALV`/`CESTOS`/`TiposPlataforma`/ADR-004 já modelados.
+  2. **Derivação de stock** — o PHC não guarda um saldo; deriva-o em
+     leitura através de uma view, `uv_stkalvplt`, que soma movimentos
+     (`sl`) com sinal invertido consoante o tipo de movimento (`cm`),
+     filtrados a partir de uma data de corte e só para movimentos
+     associados a uma palete, agrupados por artigo+armazém+palete+
+     alvéolo — trazendo ainda atributos da palete (`fref`): código
+     único, tipo, se está marcada, se pertence a uma palete "master"
+     (com peso próprio), e o stamp do documento de origem.
+- **Decisão:** tratar estas duas queries como **especificação
+  funcional de referência**, não como desenho a copiar 1:1:
+  1. A cubicagem/classificação de plataforma alimenta o motor de
+     criação de missões ainda por construir (ver secção 8) — o
+     resultado (que separar, para que plataforma) é o que chega ao
+     WOPA. **Mantém-se a decisão já tomada no ADR-011: é o WOPA que
+     recebe essa informação via `POST /api/ordens-separacao` (push);
+     o `orchestrator` não passa a consultar o PHC diretamente.** Quem
+     corre esta lógica de cubicagem antes de chamar o endpoint (o
+     próprio PHC? um conector intermédio?) fica por confirmar — ver
+     conflito abaixo.
+  2. A derivação de stock por soma de movimentos é o mesmo princípio
+     já modelado em `SL` (Movimentos de Stock) + `CM` (Código de
+     Movimento, com a regra `CM_ID < 500` = entrada / `> 500` = saída)
+     + `SA` (Stock por Armazém/Alvéolo) — **não** se introduzem tabelas
+     novas (`palete`/`movimento_stock`/`stock_atual`); `SL`/`SA`/`CM`
+     já são os nomes exatos pedidos pelo cliente (ADR-011) e cumprem o
+     mesmo papel que `uv_stkalvplt`. `uv_stkalvplt` serve de
+     especificação para a query/view equivalente a construir sobre
+     `SL`/`SA` quando se implementar a escrita de movimentos (ainda
+     por fazer, ver secção 8).
+- **Conflito por resolver, sinalizado ao cliente em vez de decidido
+  aqui:** a query de cubicagem, tal como enviada, sugere o
+  `orchestrator` a ler diretamente tabelas do PHC (`bo`/`bi`/`st`) para
+  calcular as necessidades — o que colide com o princípio "push, não
+  pull" do ADR-011 (o cliente já corrigiu isto explicitamente: é o
+  WOPA que recebe, nunca o `orchestrator` a consultar sistemas
+  externos). Assumo que o ADR-011 continua a valer e que a query serve
+  só de referência do *cálculo*, correndo algures antes do `POST`
+  (no PHC, ou num conector) — mas isto precisa de confirmação
+  explícita do cliente antes de desenhar o motor de missões a sério.
+- **Porquê não copiar o schema de stock proposto (`palete`/
+  `movimento_stock`):** o cliente já pediu, em mensagem própria e mais
+  recente, nomes de tabela exatos — `SL`, `SA`, `CM` — com a regra de
+  sinal via `CM_ID`. Introduzir tabelas paralelas com sinal
+  pré-calculado duplicaria o mesmo conceito de forma incompatível.
+  Prefiro reconciliar a lógica nova dentro do schema já acordado a
+  arriscar dessincronizar os dois.
+
 ---
 
 ## 8. Em aberto
