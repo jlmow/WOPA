@@ -3,8 +3,9 @@
 | | |
 |---|---|
 | **Estado** | Em desenvolvimento — validado com PoC funcional |
-| **Última atualização** | App `pda` (login → módulos → zona → missão de picking, com plataformas de destino) |
+| **Última atualização** | Adoção do documento "Requisitos Funcionais WOPA v0.4" como fonte autoritativa do modelo de negócio (ver ADR-015) |
 | **Âmbito** | Todos os módulos do projeto WOPA (Warehouse Order & Picking Automation) |
+| **Fonte de negócio autoritativa** | `Requisitos Funcionais, Desenho da Solução e Arquitectura — WOPA v0.4` (agosto 2026), fornecido pelo cliente. Onde este documento e as decisões anteriores registadas aqui entrarem em conflito, **o v0.4 vence** — exceto nos dois pontos explicitamente revistos no ADR-015 (stack do PDA e fronteira de escrita) |
 
 Este documento é a referência viva da arquitetura do WOPA. Regista as
 decisões tomadas (e porquê), a stack por módulo, os princípios de UX
@@ -61,13 +62,17 @@ ADR-011.
 
 ## 2. Módulos
 
-| Módulo | Tipo de posto de trabalho | Responsabilidade |
+Nomenclatura de aplicações confirmada pelo documento de requisitos
+v0.4 ("sete aplicações em três camadas") — mapeada para os projetos
+já existentes neste repositório:
+
+| Módulo | Tipo de posto de trabalho | Responsabilidade (v0.4, seção 6.1) |
 |---|---|---|
-| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com o ERP (PHC), e receção das Ordens de Separação (`POST /api/ordens-separacao`) — ver secção 4.4/ADR-008/ADR-011 |
-| `controller` | Desktop (Windows) | "Front office": ecrã onde uma pessoa organiza o trabalho das missões e controla a operação — vê o detalhe do que está a ser feito, do que vai entrar e do que falta fazer, e pode **alterar missões manualmente**, fugindo às regras automáticas quando preciso. Lê as Ordens de Separação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
-| `core-config` | Desktop (Windows) | Configuração do sistema (parametrização) |
-| `packing` | Posto fixo tipo POS | Picagem/embalamento de encomendas por operadores num posto fixo |
-| `pda` | PDA Android (mobilidade) | App única com os módulos `picking` (implementado), `transporte` e `abastecimento` (por implementar) — ver secção 4.1 |
+| `orchestrator` | Servidor (sem UI) | **WOPA Orchestrator**: "automação sem intervenção" — pull das células (ADR A.11), tipificação e cubicagem (Anexo A), sequenciamento de missões, geração de tarefas, e integração de fronteira com o OH/ERP (receção de PS, `POST /api/ordens-separacao`). Continua o **único ponto de escrita** na base de dados — ver ADR-015 |
+| `controller` | Desktop (Windows) | **WOPA Controller**: coordenação humana — composição de ordens de preparação e plataformas, atribuição a células, prioridades, gestão de missões incompletas, monitorização integrada. Perfil único de utilizador (supervisor do CL); não precisa de acesso ao ERP para operar |
+| `core-config` | Desktop (Windows) | **WOPA Core/Config**: biblioteca central com as regras replicáveis (tipificação, cubicagem, empilhamento, slotting, agrupamento — Anexo A) e o painel de parametrização que as alimenta. Regras e parâmetros mantidos separados internamente |
+| `packing` | Posto fixo tipo POS | **WOPA Packing**: posto de célula — conferência por modo (cestos/caixas), montagem da palete final por índice de camada, etiquetagem por cesto. O fecho de uma plataforma dispara o pull da seguinte (ADR A.11) |
+| `pda` | PDA Android (mobilidade) | Um único projeto (ADR-005) com três módulos correspondentes às três apps do v0.4: **PDA Picking** (man-up — execução/validação de picks, implementado), **PDA Transporte** (transporte perpendicular de plataformas entre corredores e células, por implementar), **PDA Abastecimento** (put-away, abastecimento de topos, fluxo P0, por implementar) — ver secção 4.1 e ADR-015 (mantém-se PWA própria, não Kalipso Studio) |
 
 ---
 
@@ -299,6 +304,123 @@ Confirmado pelo cliente a partir da planta do armazém:
   aciona) — a API já não rebenta com estas linhas (`Localizacao` fica
   `""` quando não há alvéolo), mas o comportamento correto no ecrã
   ainda não está definido.
+
+### 4.7 Modelo de domínio real (documento de requisitos v0.4)
+
+O documento de requisitos v0.4 fixa uma hierarquia de domínio mais
+rica do que a modelada até aqui, com base em 18 meses de dados reais e
+147 PS analisados a fundo. **É autoritativa (ADR-015)** e substitui o
+modelo informal usado nas seções 4.1–4.6 e no schema atual onde houver
+conflito — ver secção 8 para o trabalho de schema ainda por fazer.
+
+**Hierarquia:** `PS → Ordem de Preparação → Plataforma → Cesto → Missão`
+
+| Conceito | Definição |
+|---|---|
+| **PS** (pedido de separação) | Unidade de contrato com o ERP. Sem limite de referências. Um PS pode gerar componente P0 (paletes completas) e componente de picking em simultâneo (regra A.3) |
+| **Ordem de preparação** | Agrupamento de PS por cliente, data e morada de entrega. É a unidade que se cubica, se tipifica e se despacha. Composta manualmente pelo supervisor numa fase inicial, com proposta automática mais tarde (RF-CTL-02) |
+| **Plataforma** | Veículo físico anónimo e fungível (estrado 120×80) que transporta o trabalho de picking pelos corredores até à célula. Tipada P4/P2/P1 pelos cestos que leva — **P0 não é um tipo de plataforma**, é um fluxo direto reserva→expedição para paletes completas (regra A.3), executado pelo empilhador de abastecimento, fora do circuito de corredores |
+| **Cesto** | Contentor que segrega uma ordem de preparação dentro da plataforma. **Um cesto = uma ordem (invariante)**. Três tamanhos (P4/P2/P1); não se misturam tamanhos na mesma plataforma |
+| **Missão** | Unidade de trabalho atribuída a um operador num centro de trabalho. Tipificada por centro: **picking, packing, transporte, abastecimento, reposição, P0** — não só picking, como modelado até agora |
+| **Rota** | Agrupamento de expedição, possivelmente multicliente, que junta volumes já embalados para carregamento — ainda não modelado |
+
+**Dois cenários de composição de plataforma (secção 4.2 do v0.4):**
+
+- **Cenário A — ordens ≥ P1:** a ordem excede a capacidade de uma
+  plataforma e reparte-se por *n* plataformas P1 (notação `P1(n)`).
+  Cada plataforma é mono-ordem, mono-cliente. A sequência das
+  plataformas obedece à restrição de empilhamento (ver abaixo).
+- **Cenário B — ordens < P1:** várias ordens pequenas partilham a
+  mesma plataforma para aproveitar a viagem pelos corredores — uma
+  ordem por cesto. Podem ser de clientes/moradas/datas diferentes; a
+  segregação é garantida pelo cesto, não pela plataforma.
+
+**Dimensões e capacidades dos cestos** (margem de segurança de 20% já
+aplicada — corrige os valores de exemplo usados nas ADR-004/011):
+
+| Cesto | C×L×A (cm) | Bruto (L) | Útil −20% (L) | Cestos por plataforma |
+|---|---|---|---|---|
+| P1 | 120×80×50 | 480 | 384 | 1 (cesto = plataforma) |
+| P2 | 60×80×50 | 240 | 192 | 2 |
+| P4 | 40×60×50 | 120 | 96 | 4 |
+
+Regra de tipificação (A.4): o tipo é o **menor cesto** onde o volume
+de picking da ordem cabe — P4 até 96 L, P2 até 192 L, P1 até 384 L.
+Acima disso, multi-plataforma `P1(n)`, `n = CEILING(vol / 384L)`,
+sempre com plataformas P1 (mesmo quando o resto caberia num cesto
+menor — simplicidade operacional). Cubicagem detalhada em A.1/A.2:
+caixas completas pelo volume da caixa, avulsas por fração proporcional
+(não ocupam caixa própria).
+
+**Empilhamento da palete final (secção 4.3):** pesados em baixo, leves
+em cima, padrão cíclico (1 camada pesada + N leves, N ainda por fixar
+— ver "Em aberto"). Cada plataforma de uma ordem ≥P1 corresponde a uma
+camada e traz um índice de sequência. O packing consome plataformas
+por índice de camada, não por ordem de chegada — daí o buffer de 4
+lugares à entrada da célula, que absorve a reordenação do circuito
+(90% das ordens ≥P1 têm ≤4 plataformas e cabem inteiramente no
+buffer). **O peso deixou de ser critério de dimensionamento** — dados
+reais mostram plataformas a ~6% do limite de 1.200 kg; passa a
+salvaguarda (A.15), não a regra de composição.
+
+**Pull por buffer (secção 4.4/A.11):** não há células de consolidação
+— a consolidação faz-se na separação. Todas as células são de
+packing, em dois modos reconfiguráveis por parametrização: **modo
+cestos** (ONLINE/ordens pequenas, conferência EAN artigo a artigo) e
+**modo caixas** (B2B/FISICAS/CNUS, conferência mais leve de plataformas
+de caixas fechadas mono-cliente). Cada célula tem buffer de 4 lugares;
+ao libertar um lugar, puxa automaticamente a próxima plataforma
+destinada a essa célula.
+
+**Missões incompletas:** uma missão pode ficar aberta e incompleta
+(tipicamente por rutura de stock na frente) com motivo tipificado
+(rutura, fim de turno, mudança de prioridade, avaria). A plataforma
+segue e a ordem fica parcialmente satisfeita. **O fecho é sempre
+decisão do supervisor no `controller`** — fechar, retomar ou
+reatribuir (A.13). Isto generaliza o que já tínhamos como "pausa" só
+para picking.
+
+**Canais (secção 2.1)** — cada um com perfil de composição diferente,
+relevante para o motor de missões (`RegrasMissao`, ADR-010):
+
+| Canal | Perfil |
+|---|---|
+| ONLINE | E-commerce. Pedido = encomenda = cliente. 54% das linhas fora do case pack (avulsas). 96% dos PS cabem num cesto |
+| B2B | Retalho/grossista. Uma encomenda pode gerar vários PS. Maioritariamente caixas completas |
+| FISICAS | Reposição de lojas próprias. ~30% das linhas com avulsas |
+| CNUS | Cliente único de grande volume. Predomínio de paletes completas (fluxo P0). PS grandes, poucas linhas, muitas peças |
+
+**Geometria física do CL (secção 2.2)** — dados confirmados no
+levantamento, relevantes para o slotting (A.10) e o sequenciamento de
+picks (A.9): 4 corredores de picking, 8 laterais (2 por corredor), 7
+níveis em altura, 51 alvéolos ao comprimento (2.856 frentes de picking
+no total). Catálogo ativo (~5.500 refs) excede as frentes disponíveis
+— falta regra de atribuição de frentes (ver "Em aberto"). Picking por
+transelevadores man-up, um por corredor, que não saem do corredor;
+transporte entre corredores/células por empilhador de transporte
+perpendicular; abastecimento de topos, put-away e fluxo P0 por
+empilhador dedicado. Racks de reposição de 9 andares, palete 80×120,
+altura útil 115 cm, peso máx. 1.200 kg.
+
+**Faseamento recomendado pelo v0.4 (secção 9):**
+
+- **Fase 1 (MVP):** interface de entrada, modelo de localizações e
+  stock, `controller` com composição de ordens e atribuição a células,
+  tipificação P0/P1, missões de picking e transporte, packing em modo
+  caixas, expedição. Fluxos B2B/FISICAS/CNUS.
+- **Fase 2:** plataformas partilhadas (P4/P2) e composição por cesto,
+  packing em modo cestos com conferência EAN, empilhamento por
+  camadas, pull por buffer completo, slotting vertical, missões de
+  abastecimento e reposição.
+- **Fase 3:** plataforma órfã e edição de ordens em curso, painel de
+  supervisão completo, contagens cíclicas, parametrização avançada,
+  afinação com tempos reais medidos pelo próprio sistema.
+- **Depois da fase 3:** integração com transportadoras.
+
+O PoC de `picking` construído até agora cobre uma fatia vertical fina
+de tipificação P1 simples (uma missão, um tipo), não ainda as
+composições de plataforma partilhada nem o empilhamento — alinhado com
+começar pela Fase 1 e crescer para a Fase 2.
 
 ---
 
@@ -790,16 +912,20 @@ Confirmado pelo cliente a partir da planta do armazém:
      especificação para a query/view equivalente a construir sobre
      `SL`/`SA` quando se implementar a escrita de movimentos (ainda
      por fazer, ver secção 8).
-- **Conflito por resolver, sinalizado ao cliente em vez de decidido
-  aqui:** a query de cubicagem, tal como enviada, sugere o
-  `orchestrator` a ler diretamente tabelas do PHC (`bo`/`bi`/`st`) para
-  calcular as necessidades — o que colide com o princípio "push, não
-  pull" do ADR-011 (o cliente já corrigiu isto explicitamente: é o
-  WOPA que recebe, nunca o `orchestrator` a consultar sistemas
-  externos). Assumo que o ADR-011 continua a valer e que a query serve
-  só de referência do *cálculo*, correndo algures antes do `POST`
-  (no PHC, ou num conector) — mas isto precisa de confirmação
-  explícita do cliente antes de desenhar o motor de missões a sério.
+- **Conflito sinalizado aqui, entretanto resolvido pelo documento de
+  requisitos v0.4 (ver ADR-015):** a query de cubicagem, tal como
+  enviada, sugeria o `orchestrator` a ler diretamente tabelas do PHC
+  (`bo`/`bi`/`st`) para calcular as necessidades — o que pareceria
+  colidir com o princípio "push, não pull" do ADR-011. O v0.4 confirma
+  que não há conflito: **RF-ENT-01/03** especificam que o WOPA
+  **recebe** via integração com o ERP tanto os PS (canal, cliente,
+  morada, data, linhas) como os **dados mestre de artigos**
+  (unidades/caixa, dimensões, peso, classe de empilhamento) —
+  suficiente para o `orchestrator` correr ele próprio a cubicagem
+  (Anexo A.1–A.5) sem nunca consultar tabelas do PHC diretamente. A
+  query `bo`/`bi`/`st` era só a forma como o PHC produz hoje essa
+  informação do lado dele — não o desenho de integração do WOPA. O
+  ADR-011 mantém-se tal como estava.
 - **Porquê não copiar o schema de stock proposto (`palete`/
   `movimento_stock`):** o cliente já pediu, em mensagem própria e mais
   recente, nomes de tabela exatos — `SL`, `SA`, `CM` — com a regra de
@@ -807,6 +933,74 @@ Confirmado pelo cliente a partir da planta do armazém:
   pré-calculado duplicaria o mesmo conceito de forma incompatível.
   Prefiro reconciliar a lógica nova dentro do schema já acordado a
   arriscar dessincronizar os dois.
+
+### ADR-015 — Adoção do documento de requisitos v0.4 como fonte autoritativa, com duas exceções explícitas
+
+- **Contexto:** o cliente entregou `Requisitos Funcionais, Desenho da
+  Solução e Arquitectura — WOPA v0.4`, um documento muito mais
+  detalhado do que a informação fornecida até aqui: modelo de domínio
+  completo (PS → Ordem de Preparação → Plataforma → Cesto → Missão),
+  regras de negócio executáveis (Anexo A), resultados de simulação
+  sobre dados reais, e uma proposta de arquitetura de software própria
+  — incluindo stack tecnológica, que diverge em dois pontos do que já
+  estava construído e testado neste repositório.
+- **Decisão (confirmada pelo cliente, quatro perguntas diretas):**
+  1. **O v0.4 é autoritativo.** Onde o modelo de domínio, as regras de
+     negócio (Anexo A) ou os requisitos funcionais deste documento
+     entrarem em conflito com decisões anteriores registadas aqui
+     (nomes/hierarquia de entidades, dimensões de cesto, P0 como tipo
+     de plataforma, regras de missão improvisadas), **o v0.4 vence**.
+  2. **Exceção 1 — stack do PDA:** o v0.4 recomenda **Kalipso Studio**
+     para as três apps de PDA. **Mantém-se a PWA TypeScript + React +
+     Vite já construída e testada** (offline-first real, indicador de
+     ligação real, ADR-002/005/007/009) — decisão do cliente, que
+     prevalece sobre a recomendação do documento nesta área específica.
+  3. **Exceção 2 — fronteira de escrita:** o v0.4 propõe *"stored
+     procedures como fronteira de escrita para os PDA"*, o que lido à
+     letra sugeriria PDAs a escrever direto no SQL Server. **Mantém-se
+     o `orchestrator` como único gateway de escrita** (princípio da
+     secção 1): o PDA continua a falar só com a API do `orchestrator`;
+     o `orchestrator` pode (e deve, para honrar a recomendação do
+     documento onde faz sentido) usar stored procedures **por baixo**
+     da sua própria camada de acesso a dados, para a validação de
+     estado/EAN/quantidade nas escritas de picking — mas nenhum
+     cliente volta a tocar diretamente na base de dados.
+  4. **Âmbito:** apesar do v0.4 sugerir os três PDA como "pacote bem
+     delimitado, adequado a desenvolvimento externo", o âmbito deste
+     trabalho **continua a incluir o `pda`** — não passa para uma
+     equipa externa nem para Kalipso Studio.
+- **Porquê:** o v0.4 é um documento de negócio produzido com dados
+  reais (147 PS, simulação de 18 meses) — deve substituir modelação
+  improvisada feita sem essa informação. As duas exceções protegem
+  trabalho já validado (PoC offline-first testada com corte de rede
+  real) e um princípio arquitetural já acordado explicitamente com o
+  cliente (nenhum cliente fala direto com a BD) que o documento não
+  discute com esse detalhe — não parece ser uma decisão deliberada de
+  o inverter, mas sim uma formulação genérica ("stored procedures
+  como fronteira") escrita sem conhecer a arquitetura já construída.
+- **Consequência — trabalho de schema/API ainda por fazer** (ver
+  secção 8, não feito nesta entrada porque é uma alteração estrutural
+  grande sobre schema já testado):
+  - Novas tabelas: **Ordem de Preparação** (agrupa PS) e **Plataforma**
+    (gerada pela tipificação) — não existem hoje; `OrdensSeparacao`
+    aproxima-se de PS mas falta o nível de agrupamento acima.
+  - **Cesto** passa a ter uma instância por (ordem de preparação ×
+    plataforma), não só a tabela de referência de tamanhos (`CESTOS`)
+    que já existe — precisa de uma tabela nova ou de repensar como
+    `CESTOS` é usada.
+  - **`TiposPlataforma`** tem hoje P0 como um tipo com dimensões — tem
+    de deixar de incluir P0 (que é um fluxo, não uma plataforma) e
+    passar a refletir só P4/P2/P1, com as dimensões corrigidas da
+    secção 4.7.
+  - **`MISSAO`** já suporta um `TipoModulo`/zona genérico, mas o motor
+    de criação de missões só existe para picking — falta generalizar
+    para packing/transporte/abastecimento/reposição/P0, como o v0.4
+    exige.
+  - Nomes de tabela exatos para as entidades novas (Ordem de
+    Preparação, Plataforma, Cesto-instância) — o cliente deu nomes
+    exatos para as tabelas existentes (`TER`/`US`/`ALV`/etc., ADR-011)
+    mas não para estas; proponho nomes descritivos até indicação em
+    contrário.
 
 ---
 
@@ -863,3 +1057,73 @@ Confirmado pelo cliente a partir da planta do armazém:
   operador/zona/dispositivo — hoje a PoC só serve uma missão fixa;
   falta decidir o critério de atribuição (fila simples? prioridade?
   por zona do operador?).
+
+### 8.1 Rework de schema/API pendente por causa do v0.4 (ADR-015)
+
+Trabalho estrutural identificado mas **não feito ainda** — é uma
+alteração grande sobre schema já testado, por isso fica planeado aqui
+antes de se mexer em código:
+
+- Tabela **Ordem de Preparação** (agrupa PS por cliente/data/morada) —
+  nova, não existe. `OrdensSeparacao` hoje aproxima-se do nível PS, sem
+  o agrupamento acima.
+- Tabela **Plataforma** (gerada pela tipificação, tipo P4/P2/P1) — nova.
+- **Cesto como instância** (1 cesto = 1 ordem, dentro de 1 plataforma)
+  — hoje `CESTOS` é só a tabela de referência de tamanhos; falta o
+  nível de instância.
+- **`TiposPlataforma`**: remover `P0` (é fluxo, não tipo de
+  plataforma) e corrigir dimensões/capacidades para as da secção 4.7
+  (P1 384L, P2 192L, P4 96L, margem 20% já aplicada).
+- Generalizar **`MISSAO`** para os 6 centros de trabalho do v0.4
+  (picking, packing, transporte, abastecimento, reposição, P0) — hoje
+  só o motor de picking existe.
+- Estados de missão (A.13): `criada → atribuída → em execução →
+  (pausada ↔ em execução) → concluída | fechada incompleta`, com
+  motivo tipificado na pausa — falta modelar a máquina de estados a
+  sério (hoje é só Pendente/EmProgresso/Concluida).
+- Nomes de tabela exatos para as entidades novas — o cliente só deu
+  nomes fixos para as tabelas já existentes (ADR-011); perguntar antes
+  de finalizar, ou propor e corrigir depois.
+
+### 8.2 Decisões que o próprio documento v0.4 deixa em aberto
+
+Não preciso de as levantar ao cliente agora — o documento já as
+assinala como pendentes ("DECISÃO PENDENTE", Anexo A / secção 8);
+registo aqui só para não se perderem quando chegar a essa parte da
+implementação:
+
+- Padrão de empilhamento quando os SKUs disponíveis não têm a
+  proporção pesado/leve certa para o ciclo (A.8), e a tabela que
+  mapeia altura da palete → valor de N (só há valores ilustrativos:
+  N=2 até 140 cm, N=3 até 180 cm, não validados).
+- Cálculo de `n_plataformas` por volume (A.5) vs. por número de
+  camadas de empilhamento (A.8) — podem divergir; falta decidir se é o
+  máximo dos dois.
+- Regra de atribuição de frentes de picking: 5.500 referências para
+  2.856 frentes disponíveis — quais têm frente fixa, quais rodam,
+  quais servidas da reserva (A.10 / secção 8 do v0.4).
+- Critério de afinidade para propor agrupamento automático de
+  plataformas partilhadas (A.7): proximidade de corredores, destino de
+  expedição, ou ordem de chegada.
+- Âmbito da partilha de cestos: mono-cliente estrito vs. partilha por
+  dia/célula (~31% menos viagens na análise) — recomendado
+  parametrizável.
+- Limite de tolerância offline: quanto tempo um PDA pode trabalhar sem
+  rede antes de se bloquear, para não haver trabalho sobre missões já
+  reatribuídas (A.13) — relevante diretamente para o ADR-007/009 já
+  implementados no `pda`.
+- Se uma ordem parcialmente satisfeita aguarda o remanescente (onde? —
+  buffer da célula, zona de espera dedicada) ou é sempre expedida
+  parcialmente (A.14).
+- Plataforma órfã (picking já iniciado numa ordem que muda) — fora de
+  âmbito da v1, mas o v0.4 já descreve o conceito para produção
+  (secção 8/RF-CTL-08).
+- Sequenciamento dentro do corredor (A.9): admite mais de uma passagem
+  quando reduz subidas? O retorno ao ponto de saída conta como
+  passagem útil?
+- Periodicidade de recálculo do slotting vertical e quem o executa
+  (A.10) — implica movimentação física de stock.
+- Tempos operacionais reais (pick por nível, transporte, packing por
+  modo, abastecimento de topo, taxa de falta) — "a variável mais
+  determinante de todo o dimensionamento", ainda por medir (não há
+  man-up instalado para cronometrar).
