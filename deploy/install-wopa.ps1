@@ -34,8 +34,10 @@
 
 .PARAMETER SourceRoot
     Onde copiaste o repositório (a pasta que tem orchestrator/, pda/,
-    controller/) — é só material de build, fica em C:. Por omissão
-    C:\wopa\install.
+    controller/). Por omissão, a pasta-mãe de onde este próprio script
+    está a correr (ex.: se o script está em E:\wopa\install\deploy,
+    assume E:\wopa\install) — normalmente não precisas de passar isto,
+    seja qual for a drive/pasta para onde copiaste o projeto.
 
 .PARAMETER InstallRoot
     Onde os SITES do WOPA ficam instalados (orchestrator publicado,
@@ -80,7 +82,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$SourceRoot = "C:\wopa\install",
+    [string]$SourceRoot = (Split-Path $PSScriptRoot -Parent),
     [string]$InstallRoot = "E:\wopa",
     [Parameter(Mandatory = $true)]
     [string]$SqlServer,

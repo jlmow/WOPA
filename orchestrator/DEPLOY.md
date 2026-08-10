@@ -22,8 +22,14 @@ PowerShell que faz tudo — pré-requisitos, base de dados, publicar
 sites no IIS:
 
 ```powershell
-# copia o repositório para o servidor (ex. C:\wopa\install), depois:
-cd C:\wopa\install\deploy
+# 1. Abre o PowerShell como Administrador (Menu Iniciar -> PowerShell
+#    -> botao direito -> "Executar como Administrador"). NAO uses a
+#    Command Prompt (cmd.exe) nem duplo-clique no ficheiro.
+# 2. Copia o repositorio para o servidor, em qualquer disco/pasta
+#    (o script deteta sozinho onde esta -- nao precisas de o copiar
+#    para um caminho especifico). Depois:
+cd E:\wopa\install\deploy      # ajusta ao caminho onde copiaste
+Unblock-File .\install-wopa.ps1
 .\install-wopa.ps1 -SqlServer "WOPASRV\wopa" -HostName "172.16.4.15" -SeedRealistic
 ```
 
