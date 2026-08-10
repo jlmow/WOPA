@@ -25,9 +25,10 @@
     instância real de SQL Server (nenhuma disponível no ambiente onde
     foi escrito) — confirmar antes de confiar nele em produção.
 
-    Convenção de nomes: os códigos entre parêntesis nos comentários
-    (TER, US, ALV, CESTOS, CM, SL, SA, ...) são os que o cliente usou
-    ao descrever as tabelas — mantidos aqui como referência cruzada.
+    Convenção de nomes: TER, US, ALV, CESTOS, MISSAO, SL, SA e CM são
+    nomes de tabela pedidos explicitamente pelo cliente (não apenas
+    códigos de referência) — mantidos exatamente assim. As restantes
+    tabelas usam nomes descritivos por não terem código pedido.
 */
 
 SET NOCOUNT ON;
@@ -91,13 +92,13 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 5. orchestrator.Terminais (TER)
+-- 5. orchestrator.TER — Terminais
 --    Um registo por PDA/dispositivo.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Terminais' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'TER' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.Terminais
+    CREATE TABLE orchestrator.TER
     (
         Id                NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- TER_ID
         Codigo            NVARCHAR(30)  NOT NULL UNIQUE,        -- TER_Codigo, ex. "PDA-001"
@@ -109,15 +110,15 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 6. orchestrator.Utilizadores (US)
+-- 6. orchestrator.US — Utilizadores
 --    Operadores — hoje o pda só pede um "número de operador" no login
 --    sem validar contra nada; esta tabela é o destino real dessa
 --    validação (ver ARCHITECTURE.md secção 8).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Utilizadores' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'US' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.Utilizadores
+    CREATE TABLE orchestrator.US
     (
         Id                NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- US_ID
         NumeroOperador    NVARCHAR(20)  NOT NULL UNIQUE,        -- US_Numero, o que se digita no pda
@@ -128,38 +129,38 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 7. orchestrator.Alveolos (ALV)
+-- 7. orchestrator.ALV — Alvéolos
 --    Localização física dentro de uma zona — hoje a PoC guarda isto só
 --    como texto livre em MissaoLinhas.Localizacao; esta tabela é a
 --    referência própria para essa informação.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Alveolos' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ALV' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.Alveolos
+    CREATE TABLE orchestrator.ALV
     (
         Id        NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- ALV_ID
         Codigo    NVARCHAR(30)  NOT NULL UNIQUE,         -- ALV_Codigo, ex. "A-01-03"
         ZonaId    NVARCHAR(50)  NOT NULL,
         Ativo     BIT           NOT NULL DEFAULT (1),
 
-        CONSTRAINT FK_Alveolos_Zona FOREIGN KEY (ZonaId) REFERENCES orchestrator.Zonas (Id)
+        CONSTRAINT FK_ALV_Zona FOREIGN KEY (ZonaId) REFERENCES orchestrator.Zonas (Id)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Alveolos_ZonaId' AND object_id = OBJECT_ID(N'orchestrator.Alveolos'))
-    CREATE INDEX IX_Alveolos_ZonaId ON orchestrator.Alveolos (ZonaId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ALV_ZonaId' AND object_id = OBJECT_ID(N'orchestrator.ALV'))
+    CREATE INDEX IX_ALV_ZonaId ON orchestrator.ALV (ZonaId);
 GO
 
 -------------------------------------------------------------------------
--- 8. orchestrator.Cestos (CESTOS)
+-- 8. orchestrator.CESTOS
 --    Tipos de cesto: dimensões e quantos cabem numa palete.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Cestos' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CESTOS' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.Cestos
+    CREATE TABLE orchestrator.CESTOS
     (
         Id                    NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo                NVARCHAR(30)  NOT NULL UNIQUE,
@@ -192,7 +193,7 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 10. orchestrator.CodigosMovimento (CM)
+-- 10. orchestrator.CM — Código de Movimentos de Stock
 --     Regra do cliente: CM_ID < 500 é entrada de stock,
 --     CM_ID > 500 é saída — refletida diretamente numa coluna
 --     calculada, para não depender de aplicações externas acertarem a
@@ -200,9 +201,9 @@ GO
 --     propósito — evitar usar esse valor.)
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CodigosMovimento' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CM' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.CodigosMovimento
+    CREATE TABLE orchestrator.CM
     (
         Id          INT           NOT NULL PRIMARY KEY,   -- CM_ID
         Descricao   NVARCHAR(100) NOT NULL,
@@ -242,9 +243,6 @@ GO
 --     Independentemente da origem (PHC ou OrdersHub), a informação é
 --     escrita aqui através de POST /api/ordens-separacao — é a partir
 --     desta tabela que o trabalho do controller começa (ADR-011).
---     (O mesmo conceito foi chamado "Ordens de Preparação" numa
---     conversa anterior com o cliente — mantemos "Ordens de Separação"
---     como nome canónico a partir de agora.)
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacao' AND schema_id = SCHEMA_ID(N'orchestrator'))
@@ -273,7 +271,7 @@ BEGIN
         AlveoloId           NVARCHAR(50)  NULL,
 
         CONSTRAINT FK_OrdensSeparacaoLinhas_Ordem FOREIGN KEY (OrdemSeparacaoId) REFERENCES orchestrator.OrdensSeparacao (Id),
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.Alveolos (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.ALV (Id),
         CONSTRAINT CK_OrdensSeparacaoLinhas_Quantidade CHECK (Quantidade > 0)
     );
 END
@@ -284,12 +282,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacaoLinhas
 GO
 
 -------------------------------------------------------------------------
--- 13. picking.Missoes
+-- 13. picking.MISSAO
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Missoes' AND schema_id = SCHEMA_ID(N'picking'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MISSAO' AND schema_id = SCHEMA_ID(N'picking'))
 BEGIN
-    CREATE TABLE picking.Missoes
+    CREATE TABLE picking.MISSAO
     (
         Id              NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo          NVARCHAR(30)  NOT NULL,
@@ -301,9 +299,9 @@ BEGIN
         CriadaEm        DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
         ConcluidaEm     DATETIME2     NULL,
 
-        CONSTRAINT FK_Missoes_Zona FOREIGN KEY (ZonaId) REFERENCES orchestrator.Zonas (Id),
-        CONSTRAINT FK_Missoes_Utilizador FOREIGN KEY (UtilizadorId) REFERENCES orchestrator.Utilizadores (Id),
-        CONSTRAINT FK_Missoes_Terminal FOREIGN KEY (TerminalId) REFERENCES orchestrator.Terminais (Id)
+        CONSTRAINT FK_MISSAO_Zona FOREIGN KEY (ZonaId) REFERENCES orchestrator.Zonas (Id),
+        CONSTRAINT FK_MISSAO_Utilizador FOREIGN KEY (UtilizadorId) REFERENCES orchestrator.US (Id),
+        CONSTRAINT FK_MISSAO_Terminal FOREIGN KEY (TerminalId) REFERENCES orchestrator.TER (Id)
     );
 END
 GO
@@ -311,7 +309,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_OrdensSeparacao_Missao')
 BEGIN
     ALTER TABLE orchestrator.OrdensSeparacao
-        ADD CONSTRAINT FK_OrdensSeparacao_Missao FOREIGN KEY (MissaoId) REFERENCES picking.Missoes (Id);
+        ADD CONSTRAINT FK_OrdensSeparacao_Missao FOREIGN KEY (MissaoId) REFERENCES picking.MISSAO (Id);
 END
 GO
 
@@ -319,7 +317,9 @@ GO
 -- 14. picking.MissaoLinhas
 --     Uma linha por artigo a picar dentro de uma missão. Corresponde a
 --     GET /api/picking/tasks — agora com alvéolo, tipo de plataforma e
---     cestos necessários, em vez de localização em texto livre.
+--     cestos necessários, em vez de localização em texto livre. (O
+--     cliente não pediu um nome de tabela específico para as linhas,
+--     só para o cabeçalho MISSAO — nome descritivo mantido aqui.)
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MissaoLinhas' AND schema_id = SCHEMA_ID(N'picking'))
@@ -341,10 +341,10 @@ BEGIN
         -- Pendente | EmProgresso | Concluida
         Estado                 NVARCHAR(20)   NOT NULL DEFAULT (N'Pendente'),
 
-        CONSTRAINT FK_MissaoLinhas_Missao FOREIGN KEY (MissaoId) REFERENCES picking.Missoes (Id),
-        CONSTRAINT FK_MissaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.Alveolos (Id),
+        CONSTRAINT FK_MissaoLinhas_Missao FOREIGN KEY (MissaoId) REFERENCES picking.MISSAO (Id),
+        CONSTRAINT FK_MissaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.ALV (Id),
         CONSTRAINT FK_MissaoLinhas_TipoPlataforma FOREIGN KEY (TipoPlataformaCodigo) REFERENCES orchestrator.TiposPlataforma (Codigo),
-        CONSTRAINT FK_MissaoLinhas_Cesto FOREIGN KEY (CestoId) REFERENCES orchestrator.Cestos (Id),
+        CONSTRAINT FK_MissaoLinhas_Cesto FOREIGN KEY (CestoId) REFERENCES orchestrator.CESTOS (Id),
         CONSTRAINT CK_MissaoLinhas_Quantidade CHECK (QuantidadeLida >= 0 AND QuantidadeLida <= QuantidadeAlvo)
     );
 END
@@ -375,14 +375,14 @@ END
 GO
 
 -------------------------------------------------------------------------
--- 16. orchestrator.MovimentosStock (SL)
+-- 16. orchestrator.SL — Movimentos de Stock
 --     Ledger de movimentos — cada picking confirmado gera aqui um
 --     movimento de saída (CM_ID > 500).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MovimentosStock' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'SL' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.MovimentosStock
+    CREATE TABLE orchestrator.SL
     (
         Id                  BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         CodigoMovimentoId   INT            NOT NULL,
@@ -392,36 +392,36 @@ BEGIN
         MissaoLinhaId       NVARCHAR(50)   NULL,        -- preenchido quando o movimento vem de um picking
         CriadoEm            DATETIME2      NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_MovimentosStock_Codigo FOREIGN KEY (CodigoMovimentoId) REFERENCES orchestrator.CodigosMovimento (Id),
-        CONSTRAINT FK_MovimentosStock_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.Alveolos (Id),
-        CONSTRAINT FK_MovimentosStock_MissaoLinha FOREIGN KEY (MissaoLinhaId) REFERENCES picking.MissaoLinhas (Id),
-        CONSTRAINT CK_MovimentosStock_Quantidade CHECK (Quantidade > 0)
+        CONSTRAINT FK_SL_Codigo FOREIGN KEY (CodigoMovimentoId) REFERENCES orchestrator.CM (Id),
+        CONSTRAINT FK_SL_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.ALV (Id),
+        CONSTRAINT FK_SL_MissaoLinha FOREIGN KEY (MissaoLinhaId) REFERENCES picking.MissaoLinhas (Id),
+        CONSTRAINT CK_SL_Quantidade CHECK (Quantidade > 0)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MovimentosStock_Sku_Alveolo' AND object_id = OBJECT_ID(N'orchestrator.MovimentosStock'))
-    CREATE INDEX IX_MovimentosStock_Sku_Alveolo ON orchestrator.MovimentosStock (Sku, AlveoloId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SL_Sku_Alveolo' AND object_id = OBJECT_ID(N'orchestrator.SL'))
+    CREATE INDEX IX_SL_Sku_Alveolo ON orchestrator.SL (Sku, AlveoloId);
 GO
 
 -------------------------------------------------------------------------
--- 17. orchestrator.StockArmazem (SA)
---     Quantidade atual por artigo e alvéolo — a "fotografia" que os
---     MovimentosStock (16) vão atualizando ao longo do tempo.
+-- 17. orchestrator.SA — Stock por Armazém e Alvéolo
+--     Quantidade atual por artigo e alvéolo — a "fotografia" que o
+--     SL (16) vai atualizando ao longo do tempo.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'StockArmazem' AND schema_id = SCHEMA_ID(N'orchestrator'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'SA' AND schema_id = SCHEMA_ID(N'orchestrator'))
 BEGIN
-    CREATE TABLE orchestrator.StockArmazem
+    CREATE TABLE orchestrator.SA
     (
         Sku            NVARCHAR(50)  NOT NULL,
         AlveoloId      NVARCHAR(50)  NOT NULL,
         Quantidade     INT           NOT NULL DEFAULT (0),
         AtualizadoEm   DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT PK_StockArmazem PRIMARY KEY (Sku, AlveoloId),
-        CONSTRAINT FK_StockArmazem_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.Alveolos (Id),
-        CONSTRAINT CK_StockArmazem_Quantidade CHECK (Quantidade >= 0)
+        CONSTRAINT PK_SA PRIMARY KEY (Sku, AlveoloId),
+        CONSTRAINT FK_SA_Alveolo FOREIGN KEY (AlveoloId) REFERENCES orchestrator.ALV (Id),
+        CONSTRAINT CK_SA_Quantidade CHECK (Quantidade >= 0)
     );
 END
 GO
@@ -455,7 +455,7 @@ WHEN NOT MATCHED THEN
     INSERT (Slug, Nome, Disponivel) VALUES (novo.Slug, novo.Nome, novo.Disponivel);
 GO
 
-MERGE orchestrator.Terminais AS alvo
+MERGE orchestrator.TER AS alvo
 USING (VALUES
     (N'ter-001', N'PDA-001', N'Terminal de exemplo para a PoC')
 ) AS novo (Id, Codigo, Descricao)
@@ -464,7 +464,7 @@ WHEN NOT MATCHED THEN
     INSERT (Id, Codigo, Descricao) VALUES (novo.Id, novo.Codigo, novo.Descricao);
 GO
 
-MERGE orchestrator.Utilizadores AS alvo
+MERGE orchestrator.US AS alvo
 USING (VALUES
     (N'us-001', N'42', N'Operador de exemplo')
 ) AS novo (Id, NumeroOperador, Nome)
@@ -473,7 +473,7 @@ WHEN NOT MATCHED THEN
     INSERT (Id, NumeroOperador, Nome) VALUES (novo.Id, novo.NumeroOperador, novo.Nome);
 GO
 
-MERGE orchestrator.Alveolos AS alvo
+MERGE orchestrator.ALV AS alvo
 USING (VALUES
     (N'alv-a0103', N'A-01-03', N'zona-a'),
     (N'alv-a0211', N'A-02-11', N'zona-a'),
@@ -485,7 +485,7 @@ WHEN NOT MATCHED THEN
 GO
 
 -- Dimensões de exemplo (mm) — por confirmar com o cliente.
-MERGE orchestrator.Cestos AS alvo
+MERGE orchestrator.CESTOS AS alvo
 USING (VALUES
     (N'cesto-standard', N'CESTO-STD', 600, 400, 300, 4)
 ) AS novo (Id, Codigo, ComprimentoMm, LarguraMm, AlturaMm, QuantidadePorPalete)
@@ -509,7 +509,7 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Codigo, novo.Descricao, novo.ComprimentoMm, novo.LarguraMm, novo.AlturaMm, novo.CestosPorPlataforma);
 GO
 
-MERGE orchestrator.CodigosMovimento AS alvo
+MERGE orchestrator.CM AS alvo
 USING (VALUES
     (100, N'Entrada por compra'),
     (110, N'Entrada por devolução de cliente'),
@@ -528,7 +528,7 @@ BEGIN
 END
 GO
 
-MERGE picking.Missoes AS alvo
+MERGE picking.MISSAO AS alvo
 USING (VALUES
     (N'missao-m0142', N'M-0142', N'zona-a', N'us-001', N'ter-001', N'Pendente')
 ) AS novo (Id, Codigo, ZonaId, UtilizadorId, TerminalId, Estado)

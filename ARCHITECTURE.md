@@ -587,17 +587,19 @@ confirmar, sem escolher a próxima linha manualmente.
      OrdersHub?) ainda está por confirmar, mas a forma de entrada no
      WOPA já não depende dessa resposta.
   2. `database/schema.sql` passa a ter as tabelas
-     `orchestrator.Terminais`, `.Utilizadores`, `.Alveolos`, `.Cestos`,
-     `.TiposPlataforma`, `.CodigosMovimento`, `.MovimentosStock`,
-     `.StockArmazem`, e `.OrdensSeparacao`/`.OrdensSeparacaoLinhas`.
-     `picking.MissaoLinhas` passa a referenciar `AlveoloId` (em vez de
-     um texto livre de localização) e `TipoPlataformaCodigo`, e ganha
-     `CestoId`/`CestosNecessarios`. `picking.Missoes` passa a
-     referenciar `UtilizadorId`/`TerminalId` em vez de texto livre.
+     `orchestrator.TER`, `.US`, `.ALV`, `.CESTOS`, `.TiposPlataforma`,
+     `.CM`, `.SL`, `.SA`, e `.OrdensSeparacao`/`.OrdensSeparacaoLinhas`.
+     `picking.MISSAO` é o nome exato pedido pelo cliente para o
+     cabeçalho da missão (`picking.MissaoLinhas`, sem código pedido,
+     manteve o nome descritivo). `picking.MissaoLinhas` passa a
+     referenciar `AlveoloId` (em vez de um texto livre de localização)
+     e `TipoPlataformaCodigo`, e ganha `CestoId`/`CestosNecessarios`.
+     `picking.MISSAO` passa a referenciar `UtilizadorId`/`TerminalId`
+     em vez de texto livre.
   3. A regra `CM_ID < 500`/`> 500` está refletida numa coluna
-     calculada (`Tipo`) em `orchestrator.CodigosMovimento`, não só em
-     comentário — para não depender de cada consumidor da tabela
-     acertar a regra da mesma forma.
+     calculada (`Tipo`) em `orchestrator.CM`, não só em comentário —
+     para não depender de cada consumidor da tabela acertar a regra da
+     mesma forma.
 - **Porquê "push" em vez do `orchestrator` consultar PHC/OrdersHub:**
   mais simples (o WOPA não precisa de saber onde/como consultar cada
   sistema externo, nem geri credenciais para lá), mais robusto (não há
@@ -605,7 +607,7 @@ confirmar, sem escolher a próxima linha manualmente.
   — o WOPA só fala com o mundo exterior através de um contrato de API
   próprio, nunca a espreitar bases de dados de terceiros.
 - **Por implementar:** o motor que lê `OrdensSeparacao` pendentes e
-  aplica as `RegrasMissao` (ADR-010) para criar `Missoes` de facto — o
+  aplica as `RegrasMissao` (ADR-010) para criar `MISSAO` de facto — o
   endpoint só recebe e guarda, ainda não processa. O `orchestrator`
   continua em memória (não ligado a `schema.sql`), por isso este
   endpoint hoje não persiste nada entre reinícios — ver secção 8.
@@ -614,6 +616,21 @@ confirmar, sem escolher a próxima linha manualmente.
   linha recebida é opcional porque nem toda origem o vai ter disponível
   — o `controller` terá de decidir o alvéolo real ao montar a missão
   quando não vier preenchido.
+- **Nomes de tabela exatos, por pedido do cliente:** `TER`, `US`,
+  `ALV`, `CESTOS`, `MISSAO`, `SL`, `SA` e `CM` não são apelidos — são
+  os nomes reais das tabelas em `orchestrator`/`picking`. As restantes
+  tabelas (`Zonas`, `Modulos`, `RegrasMissao`, `OrdensSeparacao`,
+  `MissaoLinhas`, `OperacoesProcessadas`, `TiposPlataforma`) mantêm
+  nomes descritivos por não terem sido dado um código específico.
+- **Tentativa de ligar o `orchestrator` a SQL Server a sério:** ao
+  avançar para isto, tentei instalar o SQL Server neste ambiente para
+  testar contra uma instância real — o pacote em si vem de um host
+  geofenced (`pmc-geofence.trafficmanager.net`) bloqueado pela política
+  de rede desta sandbox (não algo a contornar). Sem instância real
+  disponível para testar, e dado que ligar a persistência a sério
+  implica decidir como reconciliar o schema normalizado (Alvéolo/Tipo
+  de Plataforma por FK) com o formato simples que o `pda` já consome
+  hoje (texto livre), não avancei às cegas — ver secção 8.
 
 ---
 
@@ -624,9 +641,20 @@ confirmar, sem escolher a próxima linha manualmente.
   operador no PDA hoje não é validado no backend).
 - Se `packing` precisa de funcionar offline (ligação instável no
   armazém) — decide entre Blazor Server e WASM.
-- Ligar o `orchestrator` de facto ao SQL Server (`database/schema.sql`
-  já existe como schema-alvo — falta o `orchestrator` passar de dados
-  em memória para EF Core/Dapper a sério contra essa base de dados).
+- **Ligar o `orchestrator` de facto ao SQL Server** — falta decidir
+  como reconciliar duas coisas antes de o fazer às cegas:
+  1. Uma instância de SQL Server para testar contra (nenhuma
+     disponível no ambiente onde isto foi escrito — a instalação está
+     bloqueada pela política de rede da sandbox).
+  2. O schema normalizado (`ALV`, `TiposPlataforma`, etc., ligados por
+     FK) vs. o formato simples que o `pda` já consome e tem testado
+     (`localizacao`/`plataforma` como texto). Duas opções: (a) o
+     `orchestrator` continua a expor o mesmo formato simples ao `pda`,
+     fazendo `JOIN` para as tabelas normalizadas por trás; ou (b)
+     muda-se a API e o `pda` para trabalhar com os IDs normalizados
+     diretamente. A opção (a) não obriga a tocar no `pda` já testado;
+     a (b) é mais "correta" a prazo mas maior mudança. Preciso que
+     digas qual preferes antes de avançar.
 - Módulos `transporte` e `abastecimento`: desenhar o que cada um move
   e que "missão" faz sentido para cada um — e aplicar-lhes o mesmo
   padrão offline-first do ADR-007.
