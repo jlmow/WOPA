@@ -368,6 +368,59 @@ confirmar, sem escolher a próxima linha manualmente.
   muito específico sem modo teclado nem WebUSB), reavalia-se nessa
   altura — não há indicação disso agora.
 
+### ADR-007 — PDA offline-first: dados locais + fila de saída
+
+- **Contexto:** requisito confirmado do cliente — os PDAs têm de
+  continuar operacionais sem ligação ao `orchestrator`/BD (Wi-Fi fraco
+  ou inexistente em partes do armazém). Até aqui, o `pda` dependia de
+  uma chamada de rede bem-sucedida por cada leitura.
+- **Decisão:** o módulo `picking` do `pda` passa a **local-first**:
+  1. **Fonte de verdade no ecrã = base de dados local no dispositivo**
+     (IndexedDB, via Dexie), não a resposta da API. A missão e as suas
+     linhas são gravadas localmente assim que chegam do `orchestrator`.
+  2. **Validação da leitura acontece no cliente**, comparando o código
+     lido com o `codigoBarras` já guardado localmente — o dispositivo
+     não precisa de perguntar ao servidor se uma leitura está certa.
+     O ecrã atualiza-se de imediato, sempre, com ou sem rede.
+  3. Cada leitura/confirmação gera uma entrada numa **fila de saída
+     (outbox)** local, com um `operacaoId` gerado no dispositivo.
+  4. Um processo de sincronização **drena a fila pela ordem em que
+     foi criada** sempre que há rede (evento `online`, verificação
+     periódica, e ao abrir o módulo) — envia cada operação ao
+     `orchestrator` com o seu `operacaoId`, remove da fila quando o
+     servidor confirma.
+  5. O `orchestrator` aceita esse `operacaoId` e é **idempotente**:
+     reenviar a mesma operação (ex.: por causa de uma resposta perdida
+     em trânsito) devolve o mesmo resultado, sem duplicar o efeito.
+- **Porquê este desenho e não outro:** é o padrão estabelecido para
+  apps "local-first" (Dexie/IndexedDB + outbox é texto de manual, não
+  invenção nossa); e o `picking` já tinha sido desenhado à volta de
+  "o ecrã reage à leitura, não a uma resposta de rede" (ver secção
+  4.3) — passar a validação e a atualização do ecrã para o cliente é
+  uma extensão natural desse princípio, não uma reformulação.
+- **Consequência para o backend:** qualquer endpoint de escrita
+  chamado pelos PDAs (`scan`, `confirm`, e os equivalentes futuros de
+  `transporte`/`abastecimento`) tem de aceitar um `operacaoId` opcional
+  e ser seguro para reenviar — não é opcional projeto a projeto, é uma
+  regra para qualquer escrita vinda de um PDA.
+- **O que fica de fora desta primeira versão (limitações aceites):**
+  - **Início de missão exige rede pelo menos uma vez** — um
+    dispositivo que nunca sincronizou não tem o que picar em cache. Na
+    prática isto não é problema: o operador começa o turno com rede
+    (zona de docas/escritório) e só depois entra em zonas de sombra.
+  - **Resolução de conflitos é mínima**: se uma operação em fila
+    falhar por razão de negócio ao sincronizar (ex.: a missão foi
+    cancelada entretanto no `controller`) — caso raro dado que só um
+    operador trabalha uma missão de cada vez — a entrada é
+    descartada da fila com aviso em consola; não há ainda um ecrã de
+    "resolver conflito" para o operador ou supervisor. A registar como
+    trabalho a fazer se/quando isto se mostrar necessário na prática.
+  - **Login continua sem validação real no backend** (ver "Em
+    aberto") — não faz parte deste ADR.
+- **Reavaliar quando:** `transporte`/`abastecimento` chegarem a este
+  ponto — aplica-se o mesmo padrão (secção 4.2/4.3 e este ADR também
+  os cobre), não é uma decisão a repetir por módulo.
+
 ---
 
 ## 8. Em aberto
@@ -380,8 +433,11 @@ confirmar, sem escolher a próxima linha manualmente.
 - Desenho do esquema inicial da base de dados WOPA (schemas por
   módulo, tabelas de picking/abastecimento/transporte, e de onde vêm
   as missões reais criadas pelo `controller`).
-- Estratégia de sincronização/offline para os PDAs quando a rede
-  Wi-Fi do armazém falha (fila local + reenvio, ou bloquear leitura
-  até haver ligação?).
 - Módulos `transporte` e `abastecimento`: desenhar o que cada um move
-  e que "missão" faz sentido para cada um.
+  e que "missão" faz sentido para cada um — e aplicar-lhes o mesmo
+  padrão offline-first do ADR-007.
+- Ecrã de resolução de conflitos de sincronização (ver limitações do
+  ADR-007) — só vale a pena desenhar se se mostrar necessário na
+  prática.
+- Limite de armazenamento local do IndexedDB e política de limpeza de
+  missões antigas já sincronizadas no dispositivo.

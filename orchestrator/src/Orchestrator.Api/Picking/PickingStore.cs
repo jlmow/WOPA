@@ -15,6 +15,12 @@ public class PickingStore
 
     private readonly ConcurrentDictionary<string, PickingTask> _tasks = new();
 
+    // Suporte a idempotência (ADR-007): os PDAs podem reenviar a mesma
+    // operação (scan/confirm) mais que uma vez ao sincronizar depois de
+    // estarem offline. Guardamos o resultado por operacaoId para devolver
+    // sempre a mesma resposta em vez de aplicar o efeito outra vez.
+    private readonly ConcurrentDictionary<string, PickingTask> _operacoesProcessadas = new();
+
     public PickingStore()
     {
         Seed();
@@ -26,7 +32,17 @@ public class PickingStore
     public PickingTask? Get(string id) =>
         _tasks.GetValueOrDefault(id);
 
-    public void Reset() => Seed();
+    public bool TryGetResultadoProcessado(string operacaoId, out PickingTask task) =>
+        _operacoesProcessadas.TryGetValue(operacaoId, out task!);
+
+    public void RegistarResultadoProcessado(string operacaoId, PickingTask task) =>
+        _operacoesProcessadas[operacaoId] = task.Clone();
+
+    public void Reset()
+    {
+        Seed();
+        _operacoesProcessadas.Clear();
+    }
 
     private void Seed()
     {

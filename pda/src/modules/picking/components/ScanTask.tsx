@@ -1,28 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import type { PickingTask } from "../types";
-import { pickingApi } from "../api";
 
 interface Props {
   task: PickingTask;
-  onUpdated: (task: PickingTask) => void;
+  onScan: (barcode: string) => Promise<{ ok: true } | { ok: false; erro: string }>;
   onCompleted: (taskId: string) => void;
   onVerLista: () => void;
 }
 
 const ADVANCE_DELAY_MS = 600;
 
-export function ScanTask({ task, onUpdated, onCompleted, onVerLista }: Props) {
+export function ScanTask({ task, onScan, onCompleted, onVerLista }: Props) {
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState<{ text: string; kind: "erro" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmFailed, setConfirmFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // O leitor físico do PDA funciona como um teclado (keyboard wedge):
   // escreve os dígitos e envia Enter. Manter o foco aqui garante que a
   // leitura cai sempre neste campo, sem o operador ter de tocar no ecrã.
   useEffect(() => {
-    setConfirmFailed(false);
     setMessage(null);
     setBusy(false);
     inputRef.current?.focus();
@@ -30,22 +27,16 @@ export function ScanTask({ task, onUpdated, onCompleted, onVerLista }: Props) {
 
   const completo = task.quantidadeLida >= task.quantidadeAlvo;
 
-  // Uma leitura que atinge a quantidade alvo já é, por si só, a confirmação
-  // do operador — não faz sentido pedir mais um toque para confirmar algo
-  // que a própria leitura já provou. O sistema confirma e avança sozinho
-  // para a linha seguinte da missão.
-  async function confirmAndAdvance() {
-    try {
-      const confirmed = await pickingApi.confirm(task.id);
-      onUpdated(confirmed);
-      setMessage({ text: "Linha concluída. A avançar…", kind: "info" });
-      window.setTimeout(() => onCompleted(task.id), ADVANCE_DELAY_MS);
-    } catch (err) {
-      setConfirmFailed(true);
-      setMessage({ text: (err as Error).message, kind: "erro" });
-      setBusy(false);
-    }
-  }
+  // A leitura é validada e aplicada localmente (ADR-007) — não há chamada de
+  // rede a aguardar aqui, por isso o ecrã reage sempre na hora, com ou sem
+  // ligação. Quando a linha fica concluída, avança sozinho para a seguinte.
+  useEffect(() => {
+    if (task.estado !== "Concluida") return;
+    setMessage({ text: "Linha concluída. A avançar…", kind: "info" });
+    const temporizador = window.setTimeout(() => onCompleted(task.id), ADVANCE_DELAY_MS);
+    return () => window.clearTimeout(temporizador);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.estado, task.id]);
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
@@ -53,22 +44,14 @@ export function ScanTask({ task, onUpdated, onCompleted, onVerLista }: Props) {
     const code = barcode.trim();
     setBarcode("");
     setBusy(true);
-    try {
-      const updated = await pickingApi.scan(task.id, code);
-      onUpdated(updated);
-      if (updated.quantidadeLida >= updated.quantidadeAlvo) {
-        // Continua "busy" (ecrã bloqueado) até o avanço automático ocorrer.
-        await confirmAndAdvance();
-        return;
-      }
+    const resultado = await onScan(code);
+    if (!resultado.ok) {
+      setMessage({ text: resultado.erro, kind: "erro" });
+    } else {
       setMessage(null);
-      setBusy(false);
-      inputRef.current?.focus();
-    } catch (err) {
-      setMessage({ text: (err as Error).message, kind: "erro" });
-      setBusy(false);
-      inputRef.current?.focus();
     }
+    setBusy(false);
+    inputRef.current?.focus();
   }
 
   return (
@@ -109,19 +92,6 @@ export function ScanTask({ task, onUpdated, onCompleted, onVerLista }: Props) {
         <p className={`scan-screen__message scan-screen__message--${message.kind}`} data-testid="message">
           {message.text}
         </p>
-      )}
-
-      {confirmFailed && (
-        <button
-          className="confirm-button"
-          onClick={() => {
-            setBusy(true);
-            confirmAndAdvance();
-          }}
-          data-testid="retry-confirm-button"
-        >
-          Tentar confirmar novamente
-        </button>
       )}
     </div>
   );

@@ -1,6 +1,8 @@
 namespace Orchestrator.Api.Picking;
 
-public record ScanRequest(string Barcode);
+public record ScanRequest(string Barcode, string? OperacaoId = null);
+
+public record ConfirmRequest(string? OperacaoId = null);
 
 public record ErrorResponse(string Erro);
 
@@ -31,6 +33,13 @@ public static class PickingEndpoints
 
         group.MapPost("/tasks/{id}/scan", (string id, ScanRequest request, PickingStore store) =>
         {
+            // ADR-007: um PDA que esteve offline pode reenviar a mesma leitura
+            // ao sincronizar (ex.: a resposta anterior perdeu-se em trânsito).
+            // Com o mesmo operacaoId, devolvemos o resultado já processado em
+            // vez de aplicar a leitura outra vez.
+            if (request.OperacaoId is { } opId && store.TryGetResultadoProcessado(opId, out var jaProcessado))
+                return Results.Ok(jaProcessado);
+
             var task = store.Get(id);
             if (task is null)
                 return Results.NotFound();
@@ -44,12 +53,18 @@ public static class PickingEndpoints
             task.QuantidadeLida = Math.Min(task.QuantidadeLida + 1, task.QuantidadeAlvo);
             task.Estado = PickingTaskStatus.EmProgresso;
 
+            if (request.OperacaoId is { } novoOpId)
+                store.RegistarResultadoProcessado(novoOpId, task);
+
             return Results.Ok(task);
         })
         .WithName("RegistarLeituraPicking");
 
-        group.MapPost("/tasks/{id}/confirm", (string id, PickingStore store) =>
+        group.MapPost("/tasks/{id}/confirm", (string id, ConfirmRequest request, PickingStore store) =>
         {
+            if (request.OperacaoId is { } opId && store.TryGetResultadoProcessado(opId, out var jaProcessado))
+                return Results.Ok(jaProcessado);
+
             var task = store.Get(id);
             if (task is null)
                 return Results.NotFound();
@@ -59,6 +74,10 @@ public static class PickingEndpoints
                     $"Ainda faltam {task.QuantidadeAlvo - task.QuantidadeLida} leitura(s) antes de confirmar."));
 
             task.Estado = PickingTaskStatus.Concluida;
+
+            if (request.OperacaoId is { } novoOpId)
+                store.RegistarResultadoProcessado(novoOpId, task);
+
             return Results.Ok(task);
         })
         .WithName("ConfirmarTarefaPicking");

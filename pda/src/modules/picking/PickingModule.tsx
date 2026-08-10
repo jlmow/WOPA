@@ -2,11 +2,16 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PickingTask } from "./types";
 import { pickingApi } from "./api";
+import { db } from "./db";
+import { flushOutbox } from "./sync";
 import { TaskList } from "./components/TaskList";
 import { ScanTask } from "./components/ScanTask";
+import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
 
 type Vista = "carregando" | "leitura" | "lista" | "concluida";
+
+const MISSAO_CODIGO_CHAVE = "missaoCodigo";
 
 export function PickingModule() {
   const { zona } = useSession();
@@ -17,26 +22,111 @@ export function PickingModule() {
   const [vista, setVista] = useState<Vista>("carregando");
   const [erro, setErro] = useState<string | null>(null);
 
-  // Ao entrar no módulo, a missão começa logo na primeira linha pendente —
-  // o operador não escolhe por onde começar, o sistema decide pela rota.
+  function iniciarComLista(lista: PickingTask[], codigo: string) {
+    setTasks(lista);
+    setMissaoCodigo(codigo);
+    const primeira = lista.find((t) => t.estado !== "Concluida");
+    if (primeira) {
+      setSelectedId(primeira.id);
+      setVista("leitura");
+    } else {
+      setVista("concluida");
+    }
+  }
+
+  function aplicarSincronizado(taskId: string, atualizado: PickingTask) {
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? atualizado : t)));
+  }
+
+  // Ao entrar no módulo: primeiro tenta despachar o que já estava pendente
+  // de uma sessão anterior (para não pedir dados frescos ao servidor antes
+  // de ele saber do que já foi feito offline), depois tenta obter a missão
+  // atual da rede — e só recorre à cópia local (IndexedDB) se não houver
+  // ligação. É assim que o módulo continua a funcionar sem rede (ADR-007).
   useEffect(() => {
-    Promise.all([pickingApi.listTasks(), pickingApi.getMission()])
-      .then(([lista, missao]) => {
-        setTasks(lista);
-        setMissaoCodigo(missao.codigo);
-        const primeira = lista.find((t) => t.estado !== "Concluida");
-        if (primeira) {
-          setSelectedId(primeira.id);
-          setVista("leitura");
-        } else {
-          setVista("concluida");
+    let cancelado = false;
+
+    async function carregar() {
+      await flushOutbox(aplicarSincronizado);
+      if (cancelado) return;
+
+      try {
+        const [lista, missao] = await Promise.all([pickingApi.listTasks(), pickingApi.getMission()]);
+        if (cancelado) return;
+        await db.tasks.bulkPut(lista);
+        await db.meta.put({ chave: MISSAO_CODIGO_CHAVE, valor: missao.codigo });
+        iniciarComLista(lista, missao.codigo);
+      } catch {
+        if (cancelado) return;
+        const [localTasks, localMeta] = await Promise.all([
+          db.tasks.toArray(),
+          db.meta.get(MISSAO_CODIGO_CHAVE),
+        ]);
+        if (cancelado) return;
+        if (localTasks.length === 0) {
+          setErro(
+            "Sem ligação e sem missão guardada neste dispositivo. É preciso sincronizar pelo menos uma vez antes de trabalhar offline.",
+          );
+          return;
         }
-      })
-      .catch((err) => setErro((err as Error).message));
+        iniciarComLista(localTasks, localMeta?.valor ?? "—");
+      }
+    }
+
+    carregar();
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
-  function handleUpdated(updated: PickingTask) {
-    setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+  // Tenta sincronizar sempre que a rede volta, e periodicamente como rede de
+  // segurança (o evento "online" do browser nem sempre é fiável).
+  useEffect(() => {
+    function tentarSincronizar() {
+      void flushOutbox(aplicarSincronizado);
+    }
+    window.addEventListener("online", tentarSincronizar);
+    const intervalo = window.setInterval(tentarSincronizar, 5000);
+    return () => {
+      window.removeEventListener("online", tentarSincronizar);
+      window.clearInterval(intervalo);
+    };
+  }, []);
+
+  // Valida a leitura localmente (o código de barras esperado já está em
+  // cache) e atualiza o ecrã de imediato — sem depender de uma resposta de
+  // rede. A operação fica em fila para sincronizar quando houver ligação.
+  async function handleScan(
+    task: PickingTask,
+    barcode: string,
+  ): Promise<{ ok: true } | { ok: false; erro: string }> {
+    if (task.estado === "Concluida") {
+      return { ok: false, erro: "Linha já concluída." };
+    }
+    if (task.codigoBarras !== barcode) {
+      return { ok: false, erro: "Código de barras não corresponde ao artigo esperado." };
+    }
+
+    const quantidadeLida = Math.min(task.quantidadeLida + 1, task.quantidadeAlvo);
+    const completo = quantidadeLida >= task.quantidadeAlvo;
+    const atualizado: PickingTask = {
+      ...task,
+      quantidadeLida,
+      estado: completo ? "Concluida" : "EmProgresso",
+    };
+
+    await db.tasks.put(atualizado);
+    const agora = Date.now();
+    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "scan", taskId: task.id, barcode, criadoEm: agora });
+    if (completo) {
+      // +1 garante que fica sempre depois do "scan" na fila, mesmo que os
+      // dois caiam no mesmo milissegundo.
+      await db.outbox.add({ opId: crypto.randomUUID(), tipo: "confirm", taskId: task.id, criadoEm: agora + 1 });
+    }
+
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? atualizado : t)));
+    void flushOutbox(aplicarSincronizado);
+    return { ok: true };
   }
 
   // Ao concluir uma linha, avança automaticamente para a próxima da rota
@@ -68,6 +158,7 @@ export function PickingModule() {
           </button>
         </div>
         <h1>Picking</h1>
+        <SyncBadge />
         {total > 0 && (
           <>
             <div className="mission-progress" data-testid="mission-progress">
@@ -116,7 +207,7 @@ export function PickingModule() {
       {vista === "leitura" && selectedTask && (
         <ScanTask
           task={selectedTask}
-          onUpdated={handleUpdated}
+          onScan={(barcode) => handleScan(selectedTask, barcode)}
           onCompleted={handleCompleted}
           onVerLista={() => setVista("lista")}
         />
