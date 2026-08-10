@@ -20,7 +20,16 @@ export default function App() {
     setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   }
 
+  // Ao concluir uma tarefa, avança automaticamente para a próxima da rota
+  // (a lista já vem ordenada por localização) — o operador não tem de
+  // voltar à lista e escolher manualmente a tarefa seguinte.
+  function handleCompleted(taskId: string) {
+    const next = tasks.find((t) => t.id !== taskId && t.estado !== "Concluida");
+    setSelectedId(next ? next.id : null);
+  }
+
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
+  const waveComplete = tasks.length > 0 && tasks.every((t) => t.estado === "Concluida");
 
   return (
     <main className="app">
@@ -30,10 +39,21 @@ export default function App() {
 
       {loadError && <p className="scan-screen__message scan-screen__message--erro">{loadError}</p>}
 
+      {!selectedTask && waveComplete && (
+        <p className="scan-screen__message scan-screen__message--info" data-testid="wave-complete">
+          Onda concluída! Todas as tarefas foram picadas.
+        </p>
+      )}
+
       {!selectedTask && <TaskList tasks={tasks} onSelect={(t) => setSelectedId(t.id)} />}
 
       {selectedTask && (
-        <ScanTask task={selectedTask} onUpdated={handleUpdated} onBack={() => setSelectedId(null)} />
+        <ScanTask
+          task={selectedTask}
+          onUpdated={handleUpdated}
+          onCompleted={handleCompleted}
+          onBack={() => setSelectedId(null)}
+        />
       )}
     </main>
   );

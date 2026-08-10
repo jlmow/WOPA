@@ -5,51 +5,68 @@ import { pickingApi } from "../api";
 interface Props {
   task: PickingTask;
   onUpdated: (task: PickingTask) => void;
+  onCompleted: (taskId: string) => void;
   onBack: () => void;
 }
 
-export function ScanTask({ task, onUpdated, onBack }: Props) {
+const ADVANCE_DELAY_MS = 600;
+
+export function ScanTask({ task, onUpdated, onCompleted, onBack }: Props) {
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState<{ text: string; kind: "erro" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmFailed, setConfirmFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // O leitor físico do PDA funciona como um teclado (keyboard wedge):
   // escreve os dígitos e envia Enter. Manter o foco aqui garante que a
   // leitura cai sempre neste campo, sem o operador ter de tocar no ecrã.
   useEffect(() => {
+    setConfirmFailed(false);
+    setMessage(null);
+    setBusy(false);
     inputRef.current?.focus();
   }, [task.id]);
 
   const completo = task.quantidadeLida >= task.quantidadeAlvo;
 
-  async function handleScan(e: React.FormEvent) {
-    e.preventDefault();
-    if (!barcode.trim() || busy) return;
-    setBusy(true);
+  // Uma leitura que atinge a quantidade alvo já é, por si só, a confirmação
+  // do operador — não faz sentido pedir mais um toque para confirmar algo
+  // que a própria leitura já provou. O sistema confirma e avança sozinho.
+  async function confirmAndAdvance() {
     try {
-      const updated = await pickingApi.scan(task.id, barcode.trim());
-      onUpdated(updated);
-      setMessage({ text: "Leitura registada.", kind: "info" });
+      const confirmed = await pickingApi.confirm(task.id);
+      onUpdated(confirmed);
+      setMessage({ text: "Tarefa concluída. A avançar para a próxima…", kind: "info" });
+      window.setTimeout(() => onCompleted(task.id), ADVANCE_DELAY_MS);
     } catch (err) {
+      setConfirmFailed(true);
       setMessage({ text: (err as Error).message, kind: "erro" });
-    } finally {
-      setBarcode("");
       setBusy(false);
-      inputRef.current?.focus();
     }
   }
 
-  async function handleConfirm() {
+  async function handleScan(e: React.FormEvent) {
+    e.preventDefault();
+    if (!barcode.trim() || busy) return;
+    const code = barcode.trim();
+    setBarcode("");
     setBusy(true);
     try {
-      const updated = await pickingApi.confirm(task.id);
+      const updated = await pickingApi.scan(task.id, code);
       onUpdated(updated);
-      setMessage({ text: "Tarefa confirmada.", kind: "info" });
+      if (updated.quantidadeLida >= updated.quantidadeAlvo) {
+        // Continua "busy" (ecrã bloqueado) até o avanço automático ocorrer.
+        await confirmAndAdvance();
+        return;
+      }
+      setMessage(null);
+      setBusy(false);
+      inputRef.current?.focus();
     } catch (err) {
       setMessage({ text: (err as Error).message, kind: "erro" });
-    } finally {
       setBusy(false);
+      inputRef.current?.focus();
     }
   }
 
@@ -89,14 +106,18 @@ export function ScanTask({ task, onUpdated, onBack }: Props) {
         </p>
       )}
 
-      <button
-        className="confirm-button"
-        onClick={handleConfirm}
-        disabled={!completo || busy || task.estado === "Concluida"}
-        data-testid="confirm-button"
-      >
-        {task.estado === "Concluida" ? "Tarefa concluída" : "Confirmar tarefa"}
-      </button>
+      {confirmFailed && (
+        <button
+          className="confirm-button"
+          onClick={() => {
+            setBusy(true);
+            confirmAndAdvance();
+          }}
+          data-testid="retry-confirm-button"
+        >
+          Tentar confirmar novamente
+        </button>
+      )}
     </div>
   );
 }
