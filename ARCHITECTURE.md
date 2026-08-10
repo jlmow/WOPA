@@ -288,11 +288,15 @@ confirmar, sem escolher a próxima linha manualmente.
 | `orchestrator` — endpoints de picking, zonas, módulos | ✅ PoC funcional | ASP.NET Core Web API real, testada (missão, leitura, confirmação, plataforma, zonas, módulos) |
 | `pda` — shell (login, módulos, zona) | ✅ PoC funcional | React Router com sessão local; módulos indisponíveis aparecem desativados |
 | `pda` — módulo `picking` | ✅ PoC funcional | Fluxo guiado (auto-início, avanço automático, plataforma de destino, progresso da missão), testado de ponta a ponta com um browser real |
+| `pda` — offline-first (`picking`) | ✅ PoC funcional | IndexedDB + fila de saída, testado com corte de rede real (ADR-007) |
+| `pda` — indicador de ligação real | ✅ PoC funcional | Verificação por `/health`, presente em todos os ecrãs (ADR-009) |
 | `pda` — módulos `transporte`, `abastecimento` | ⏳ Por começar | Já aparecem no seletor de módulos como "em breve"; seguem a mesma stack e os mesmos princípios de UX do `picking` |
 | `controller` | 🚧 Em construção | Scaffold TypeScript/React/Vite, layout desktop (ver ADR-006) |
-| `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar |
+| `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
-| Base de dados WOPA (SQL Server) | ⏳ Por desenhar | A PoC usa dados em memória no `orchestrator` como substituto temporário |
+| Regras de missão configuráveis | ✅ PoC funcional | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, ainda em memória (ADR-010) |
+| Base de dados WOPA (SQL Server) | ✅ Script pronto | `orchestrator/database/schema.sql` — schema completo, ainda **não ligado** ao `orchestrator` (que continua em memória na PoC) |
+| Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
 
 ---
 
@@ -529,6 +533,33 @@ confirmar, sem escolher a próxima linha manualmente.
   cliente — é uma verificação mais forte e mais honesta do que
   assumir que "rede ligada" implica "servidor alcançável".
 
+### ADR-010 — Regras de criação de missão configuráveis (versão básica)
+
+- **Contexto:** o cliente pediu explicitamente que as regras de como o
+  `controller` monta missões a partir das Ordens de Preparação sejam
+  alteráveis a partir do `core-config`, e autorizou avançar com uma
+  proposta básica sem esperar pelas regras reais.
+- **Decisão:** um conjunto mínimo de regras, guardado como
+  configuração (não código): `MaxLinhasPorMissao`,
+  `MaxPlataformasPorMissao`, `CriterioAgrupamento` (Zona / Encomenda /
+  Nenhum) e `CriterioOrdenacao` (Localizacao / Prioridade). Exposto
+  pelo `orchestrator` em `GET`/`PUT /api/config/regras-missao`,
+  persistido em `orchestrator.RegrasMissao` no schema SQL (ver
+  `database/schema.sql`). Hoje só valida (`MaxLinhas`/`MaxPlataformas`
+  ≥ 1); ainda não há um motor de criação de missões a consumir estas
+  regras, porque isso depende de sabermos como as Ordens de Preparação
+  chegam (ADR-008) — falta esse elo antes de a configuração ter algo
+  real para influenciar.
+- **Porquê estes campos e não outros:** são os parâmetros mais óbvios
+  para controlar o tamanho/complexidade de uma missão de picking em
+  lote (nº de linhas, nº de plataformas de destino, como agrupar e
+  ordenar) — mas são propostos por mim como ponto de partida razoável,
+  **não** confirmados pelo cliente. Espera-se que mudem quando as
+  regras de negócio reais chegarem.
+- **Consequência:** o `core-config` (ainda por começar) terá aqui o
+  seu primeiro ecrã real quando arrancar — editar este mesmo endpoint,
+  não uma funcionalidade nova a inventar depois.
+
 ---
 
 ## 8. Em aberto
@@ -538,9 +569,9 @@ confirmar, sem escolher a próxima linha manualmente.
   operador no PDA hoje não é validado no backend).
 - Se `packing` precisa de funcionar offline (ligação instável no
   armazém) — decide entre Blazor Server e WASM.
-- Desenho do esquema inicial da base de dados WOPA (schemas por
-  módulo, tabelas de picking/abastecimento/transporte, e de onde vêm
-  as missões reais criadas pelo `controller`).
+- Ligar o `orchestrator` de facto ao SQL Server (`database/schema.sql`
+  já existe como schema-alvo — falta o `orchestrator` passar de dados
+  em memória para EF Core/Dapper a sério contra essa base de dados).
 - Módulos `transporte` e `abastecimento`: desenhar o que cada um move
   e que "missão" faz sentido para cada um — e aplicar-lhes o mesmo
   padrão offline-first do ADR-007.
@@ -553,8 +584,14 @@ confirmar, sem escolher a próxima linha manualmente.
   dois sistemas é efetivamente consultado para obter as Ordens de
   Preparação, e como (consulta direta à BD, API, exportação?).
 - **Regras de negócio para criação de missões no `controller`**
-  (ADR-008) — o cliente vai partilhar; sem isto o `controller` só tem
-  o ecrã de leitura "Missões" (secção 6), ainda não cria nada.
+  (ADR-008) — já há um mecanismo básico de configuração (ADR-010),
+  mas os valores/critérios reais e o motor que efetivamente cria
+  missões a partir de Ordens de Preparação ainda faltam.
+- **`database/schema.sql` ainda não foi executado contra um SQL
+  Server real** (não há instância disponível neste ambiente de
+  desenvolvimento) — a sintaxe segue os padrões standard do T-SQL, mas
+  vale a pena correr uma primeira vez com atenção e confirmar antes de
+  confiar nele em produção.
 - Endpoint no `orchestrator` para "próxima missão" por
   operador/zona/dispositivo — hoje a PoC só serve uma missão fixa;
   falta decidir o critério de atribuição (fila simples? prioridade?

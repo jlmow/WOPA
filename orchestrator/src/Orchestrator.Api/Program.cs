@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Orchestrator.Api.Config;
 using Orchestrator.Api.Modulos;
 using Orchestrator.Api.Picking;
 using Orchestrator.Api.Zonas;
@@ -10,6 +11,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<PickingStore>();
+builder.Services.AddSingleton<RegrasMissaoStore>();
 
 // PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
 // Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio
@@ -42,5 +44,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Health"
 app.MapPickingEndpoints();
 app.MapZonaEndpoints();
 app.MapModuloEndpoints();
+app.MapRegrasMissaoEndpoints();
 
 app.Run();
