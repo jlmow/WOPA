@@ -35,6 +35,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(DevClientsPolicy);
 
+// ADR-009: pedido leve para os clientes (sobretudo o pda) verificarem se o
+// servidor está mesmo alcançável, não só se há rede.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Health");
+
 app.MapPickingEndpoints();
 app.MapZonaEndpoints();
 app.MapModuloEndpoints();

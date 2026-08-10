@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
 import type { PickingTask } from "./types";
 import { pickingApi } from "./api";
 import { db } from "./db";
@@ -8,6 +9,7 @@ import { TaskList } from "./components/TaskList";
 import { ScanTask } from "./components/ScanTask";
 import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
+import { useServerConnection } from "../../shared/useServerConnection";
 
 type Vista = "carregando" | "leitura" | "lista" | "concluida";
 
@@ -16,6 +18,8 @@ const MISSAO_CODIGO_CHAVE = "missaoCodigo";
 export function PickingModule() {
   const { zona } = useSession();
   const navigate = useNavigate();
+  const ligado = useServerConnection();
+  const pendentes = useLiveQuery(() => db.outbox.count(), [], 0);
   const [tasks, setTasks] = useState<PickingTask[]>([]);
   const [missaoCodigo, setMissaoCodigo] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -179,9 +183,24 @@ export function PickingModule() {
           <p>
             {total} linha{total === 1 ? "" : "s"} separada{total === 1 ? "" : "s"}. Segue para o packing.
           </p>
-          <button className="confirm-button" onClick={() => navigate("/modulos")} data-testid="voltar-modulos-fim">
+          {/* ADR-008: passar para a missão seguinte exige ligação garantida
+              ao servidor E a fila desta missão totalmente sincronizada —
+              não basta "parecer" online. */}
+          <button
+            className="confirm-button"
+            onClick={() => navigate("/modulos")}
+            disabled={!ligado || !!pendentes}
+            data-testid="voltar-modulos-fim"
+          >
             Voltar aos módulos
           </button>
+          {(!ligado || !!pendentes) && (
+            <p className="mission-complete__aviso" data-testid="mission-complete-aviso">
+              {!ligado
+                ? "À espera de ligação ao servidor para terminar a missão…"
+                : `A sincronizar ${pendentes} linha(s) por confirmar…`}
+            </p>
+          )}
         </div>
       )}
 

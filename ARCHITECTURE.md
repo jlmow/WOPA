@@ -36,7 +36,8 @@ flowchart LR
         db[("SQL Server\nWOPA")]
     end
 
-    erp["ERP do cliente"]
+    ordershub["OrdersHub\n(existente)\npedidos de separação\n-> Ordens de Preparação"]
+    phc["PHC\n(ERP do cliente)"]
 
     controller -- REST/JSON --> orchestrator
     coreconfig -- REST/JSON --> orchestrator
@@ -44,11 +45,16 @@ flowchart LR
     pda -- REST/JSON --> orchestrator
 
     orchestrator --> db
-    orchestrator <-- integração --> erp
+    orchestrator <-- Ordens de Preparação --> ordershub
+    orchestrator <-- integração --> phc
 ```
 
 **Princípio inegociável:** nenhum cliente fala diretamente com a base
-de dados ou com o ERP. Tudo passa pelo `orchestrator`.
+de dados, com o ERP ou com o OrdersHub. Tudo passa pelo `orchestrator`
+— incluindo o `controller`, que **não tem acesso a bases de dados
+externas** (é só frontend, ver ADR-006): quem consulta o PHC/OrdersHub
+é sempre o `orchestrator`, nunca o `controller` diretamente (ver
+ADR-008, ainda por confirmar o detalhe exato dessa integração).
 
 ---
 
@@ -56,8 +62,8 @@ de dados ou com o ERP. Tudo passa pelo `orchestrator`.
 
 | Módulo | Tipo de posto de trabalho | Responsabilidade |
 |---|---|---|
-| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com a BD WOPA e com o ERP do cliente. É também quem monta as **missões** de picking (ver secção 4.1) que o `controller` vai gerar |
-| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; gera as ondas/missões que o `pda` consome |
+| `orchestrator` | Servidor (sem UI) | "Cérebro": API REST/JSON central, regras de negócio, integração com a BD WOPA, com o ERP (PHC) e com o OrdersHub (Ordens de Preparação) — ver secção 4.4/ADR-008 |
+| `controller` | Desktop (Windows) | Consola de controlo/gestão operacional; carrega as Ordens de Preparação (via `orchestrator`) e cria as missões que o `pda` consome — ver secção 4.4/ADR-008 |
 | `core-config` | Desktop (Windows) | Configuração do sistema (parametrização) |
 | `packing` | Posto fixo tipo POS | Picagem/embalamento de encomendas por operadores num posto fixo |
 | `pda` | PDA Android (mobilidade) | App única com os módulos `picking` (implementado), `transporte` e `abastecimento` (por implementar) — ver secção 4.1 |
@@ -172,9 +178,58 @@ fecha e o ecrã assinala explicitamente a transição: **"Missão concluída
 
 Hoje as missões são geradas com dados fixos no `orchestrator` (PoC);
 no desenho final, o `controller` é quem cria as ondas/missões, e o
-`orchestrator` distribui-as aos PDAs.
+`orchestrator` distribui-as aos PDAs — ver 4.4 para o circuito completo.
 
-### 4.3 Princípios de UX para PDA — picking orientado a performance
+### 4.4 Circuito completo: de onde vem uma missão até ao PDA
+
+Confirmado pelo cliente:
+
+```
+OrdersHub (existente)                          controller                    orchestrator                 pda
+─────────────────────                          ──────────                    ────────────                 ───
+pedido de separação
+        │
+        ▼
+"Ordens de Preparação" ──consulta (PHC/OrdersHub)──▶  carrega Ordens   ──cria missão──▶  distribui   ──1 missão──▶  executa
+   (documento)                                        de Preparação                       a missão                  (offline-first,
+                                                        │                                                            ADR-007)
+                                                        ▼
+                                                  cria missões
+                                              (regras de negócio
+                                                a confirmar)
+```
+
+1. **Origem:** os pedidos de separação são feitos no **OrdersHub**
+   (software já existente do cliente). O OrdersHub gera o documento
+   **"Ordens de Preparação"**.
+2. **Entrada do `controller`:** essas Ordens de Preparação chegam ao
+   WOPA por uma consulta à BD do **PHC** (o ERP do cliente) ou ao
+   **OrdersHub** — o detalhe exato (qual dos dois, e se é consulta
+   direta à BD ou uma API/exportação) ainda está por confirmar com o
+   cliente (ver secção 8). O que já está decidido: essa consulta **não
+   é feita pelo `controller` diretamente** — o `controller` é só
+   frontend, sem acesso a bases de dados externas (ADR-006). É o
+   `orchestrator` que faz essa integração e expõe as Ordens de
+   Preparação ao `controller` via API, mantendo o princípio da secção 1.
+3. **Criação da missão:** o `controller`, com as Ordens de Preparação
+   carregadas, cria as missões — segundo regras de negócio que o
+   cliente vai detalhar (ver secção 8). Ainda não implementado.
+4. **Distribuição ao PDA — uma missão de cada vez:** as missões vão
+   para os PDAs **uma a uma**, não em lote. Um PDA só tem **uma missão
+   ativa localmente**. Ao terminá-la, vai buscar a seguinte — não
+   descarrega a fila toda de antemão.
+5. **Fronteira online/offline, agora mais precisa (refina o ADR-007):**
+   - **A executar uma missão** (ler códigos, avançar linhas): pode
+     estar offline — é exatamente o que o ADR-007 cobre.
+   - **A começar uma missão nova, ou a terminar a atual e ir buscar a
+     seguinte:** exige **ligação garantida ao servidor**. Não é o
+     mesmo "talvez esteja online" do `navigator.onLine` do browser —
+     ver ADR-009.
+
+Ver ADR-008 para a decisão formal desta fronteira e ADR-009 para como
+o `pda` verifica ligação de forma fiável.
+
+### 4.5 Princípios de UX para PDA — picking orientado a performance
 
 Os ecrãs de PDA (picking, abastecimento, transporte) são usados por
 operadores em movimento, muitas vezes de luvas, durante um turno
@@ -308,7 +363,7 @@ confirmar, sem escolher a próxima linha manualmente.
   encomendas diferentes no mesmo carrinho é o erro mais comum deste
   tipo de picking. Mostrar apenas o progresso da missão (não da tarefa
   isolada) e avançar sozinho entre linhas elimina decisões e toques
-  desnecessários do operador (ver secção 4.3).
+  desnecessários do operador (ver secção 4.5).
 - **Consequência:** `transporte` e `abastecimento` devem seguir o
   mesmo padrão de missão quando forem implementados, adaptado ao que
   cada um move (paletes, localizações a repor).
@@ -396,7 +451,7 @@ confirmar, sem escolher a próxima linha manualmente.
   apps "local-first" (Dexie/IndexedDB + outbox é texto de manual, não
   invenção nossa); e o `picking` já tinha sido desenhado à volta de
   "o ecrã reage à leitura, não a uma resposta de rede" (ver secção
-  4.3) — passar a validação e a atualização do ecrã para o cliente é
+  4.5) — passar a validação e a atualização do ecrã para o cliente é
   uma extensão natural desse princípio, não uma reformulação.
 - **Consequência para o backend:** qualquer endpoint de escrita
   chamado pelos PDAs (`scan`, `confirm`, e os equivalentes futuros de
@@ -418,8 +473,61 @@ confirmar, sem escolher a próxima linha manualmente.
   - **Login continua sem validação real no backend** (ver "Em
     aberto") — não faz parte deste ADR.
 - **Reavaliar quando:** `transporte`/`abastecimento` chegarem a este
-  ponto — aplica-se o mesmo padrão (secção 4.2/4.3 e este ADR também
+  ponto — aplica-se o mesmo padrão (secção 4.2/4.5 e este ADR também
   os cobre), não é uma decisão a repetir por módulo.
+
+### ADR-008 — Ciclo da missão: OrdersHub → controller → orchestrator → PDA, uma missão de cada vez
+
+- **Contexto:** o cliente esclareceu o circuito real de dados (ver
+  secção 4.4): os pedidos de separação nascem no **OrdersHub**
+  (existente), que gera as **Ordens de Preparação**; essas Ordens
+  chegam ao WOPA por consulta ao PHC ou ao OrdersHub; o `controller`
+  cria as missões a partir delas; os PDAs recebem-nas **uma de cada
+  vez**, não em lote.
+- **Decisão:**
+  1. A consulta ao PHC/OrdersHub é feita pelo `orchestrator`, nunca
+     pelo `controller` (que não tem — nem deve ter — acesso a bases de
+     dados externas; é só frontend, ADR-006). O `orchestrator` expõe
+     as Ordens de Preparação ao `controller` via API.
+  2. O `controller` cria as missões a partir das Ordens de Preparação
+     carregadas (regras de negócio por confirmar — ver secção 8).
+  3. O `orchestrator` entrega **uma missão de cada vez** a cada PDA. O
+     dispositivo só mantém localmente a missão que está a executar.
+  4. **Executar** uma missão pode ser feito offline (ADR-007).
+     **Transicionar** entre missões — pedir a primeira, ou terminar a
+     atual e pedir a seguinte — **exige ligação garantida ao
+     servidor**, incluindo a fila de saída dessa missão
+     completamente vazia (tudo sincronizado) antes de avançar.
+- **Porquê:** manter a base de dados local e a fila de sincronização
+  de cada PDA pequenas (uma missão, não um backlog inteiro) — reduz o
+  volume de dados a sincronizar e o risco de conflito. E se um
+  dispositivo vai buscar/entregar uma missão, faz sentido que esse seja
+  precisamente o momento em que sabemos, com confiança, que há ligação.
+- **Consequência:** o ecrã de "missão concluída" do `picking` só
+  permite avançar (voltar aos módulos / ir buscar a próxima, quando essa
+  funcionalidade existir) quando a ligação está confirmada e não há
+  operações pendentes por sincronizar — ver ADR-009 para a verificação
+  de ligação e a implementação atual desse bloqueio.
+- **Por implementar** (ver secção 8): a integração real com
+  PHC/OrdersHub, a criação de missões no `controller` segundo as
+  regras de negócio do cliente, e um endpoint no `orchestrator` para
+  "próxima missão" — hoje a PoC só tem uma missão fixa.
+
+### ADR-009 — Indicador de ligação ao servidor, real, em todos os ecrãs do PDA
+
+- **Contexto:** pedido explícito do cliente: todos os ecrãs do `pda`
+  devem mostrar o estado atual de ligação ao servidor.
+- **Decisão:** `navigator.onLine` do browser **não chega sozinho** —
+  reflete a interface de rede do sistema operativo, não se o
+  `orchestrator` está mesmo acessível (pode haver Wi-Fi ligado mas o
+  servidor em baixo, ou numa VLAN sem rota até lá). O `pda` faz um
+  pedido leve e periódico a `GET /health` no `orchestrator`; só
+  considera "ligado ao servidor" quando esse pedido responde. O
+  indicador vive num layout partilhado por cima de todas as rotas
+  (login, módulos, zona, e cada módulo), não só dentro do `picking`.
+- **Porquê:** "estado de ligação ao servidor" foi o termo usado pelo
+  cliente — é uma verificação mais forte e mais honesta do que
+  assumir que "rede ligada" implica "servidor alcançável".
 
 ---
 
@@ -441,3 +549,13 @@ confirmar, sem escolher a próxima linha manualmente.
   prática.
 - Limite de armazenamento local do IndexedDB e política de limpeza de
   missões antigas já sincronizadas no dispositivo.
+- **PHC vs. OrdersHub** (ADR-008): confirmar com o cliente qual dos
+  dois sistemas é efetivamente consultado para obter as Ordens de
+  Preparação, e como (consulta direta à BD, API, exportação?).
+- **Regras de negócio para criação de missões no `controller`**
+  (ADR-008) — o cliente vai partilhar; sem isto o `controller` só tem
+  o ecrã de leitura "Missões" (secção 6), ainda não cria nada.
+- Endpoint no `orchestrator` para "próxima missão" por
+  operador/zona/dispositivo — hoje a PoC só serve uma missão fixa;
+  falta decidir o critério de atribuição (fila simples? prioridade?
+  por zona do operador?).

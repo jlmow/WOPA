@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { SessionProvider, useSession } from "./SessionContext";
+import { RootLayout } from "./RootLayout";
 import { Login } from "./routes/Login";
 import { ModulePicker } from "./routes/ModulePicker";
 import { ZonaPicker } from "./routes/ZonaPicker";
@@ -29,33 +30,35 @@ export default function App() {
     <SessionProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/modulos"
-            element={
-              <RequireOperador>
-                <ModulePicker />
-              </RequireOperador>
-            }
-          />
-          <Route
-            path="/zona"
-            element={
-              <RequireOperador>
-                <ZonaPicker />
-              </RequireOperador>
-            }
-          />
-          <Route
-            path="/picking"
-            element={
-              <RequireZona>
-                <PickingModule />
-              </RequireZona>
-            }
-          />
-          <Route path="/" element={<RaizInicial />} />
-          <Route path="*" element={<RaizInicial />} />
+          <Route element={<RootLayout />}>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/modulos"
+              element={
+                <RequireOperador>
+                  <ModulePicker />
+                </RequireOperador>
+              }
+            />
+            <Route
+              path="/zona"
+              element={
+                <RequireOperador>
+                  <ZonaPicker />
+                </RequireOperador>
+              }
+            />
+            <Route
+              path="/picking"
+              element={
+                <RequireZona>
+                  <PickingModule />
+                </RequireZona>
+              }
+            />
+            <Route path="/" element={<RaizInicial />} />
+            <Route path="*" element={<RaizInicial />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </SessionProvider>

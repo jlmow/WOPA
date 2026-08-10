@@ -440,6 +440,12 @@ button {
   width: 100%;
 }
 
+.mission-complete__aviso {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -4px 0 0;
+}
+
 /* Estado de sincronização (ADR-007: offline-first) */
 .sync-badge {
   font-size: 11px;
@@ -452,4 +458,35 @@ button {
 .sync-badge--offline {
   color: var(--erro);
   font-weight: 600;
+}
+
+/* Estado de ligação ao servidor, em todos os ecrãs (ADR-009) */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 16px;
+  background: var(--band-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.connection-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex-shrink: 0;
+}
+
+.connection-status--offline {
+  color: var(--erro);
+  font-weight: 600;
+}
+
+.connection-status--offline .connection-status__dot {
+  background: var(--erro);
 }
