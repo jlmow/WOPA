@@ -1209,10 +1209,54 @@ começar pela Fase 1 e crescer para a Fase 2.
   `SKU#####`) — não há códigos reais de artigo nem nomes de cliente
   neste documento.
 
+### ADR-019 — Dados quase-reais carregados na BD; bug de performance (N+1) encontrado e corrigido
+
+- **Contexto:** o cliente pediu para carregar "muita informação" na
+  base de dados a partir dos dados reais partilhados (a mesma fonte do
+  ADR-018), para o `controller` mostrar um cenário próximo do real, em
+  vez dos 3 artigos/1 ordem de exemplo do `schema.sql`.
+- **Decisão:** novo ficheiro `database/seed-realistic.sql` (corre
+  depois de `schema.sql`, opcional — não faz parte do schema
+  "limpo"): catálogo completo de **5.548 Artigos** e **2.500 Ordens de
+  Preparação** reais (3.367 PS, 22.362 linhas), todas em estado
+  `Aberta` — por tipificar e despachar a partir do `controller`, tal
+  como chegariam de verdade. As Ordens de Preparação foram compostas
+  usando a evidência real da folha `Rotas` (ver ADR-018): quando uma
+  rota tinha um só cliente, os seus PS viram uma Ordem de Preparação
+  só; caso contrário, cada PS fica isolado (a composição de rotas
+  multi-cliente é o Cenário B, ainda por implementar). A amostra é a
+  fatia mais recente dos 18 meses, não os 49.486 PS todos — dimensão
+  escolhida para ser "muita informação" sem tornar o ficheiro
+  (>3 MB de INSERTs) ou o import impraticáveis.
+- **Datas de entrega são estimadas** (data do PS + 3 dias) — não há
+  data de entrega real nesta exportação; sinalizado no próprio
+  ficheiro para não ser confundido com dado real.
+- **Bug real encontrado ao testar com este volume** (não haveria como
+  o ver com 1 ordem de exemplo): `GET /api/ordens-preparacao` fazia N+1
+  — uma consulta de Artigos e outra de TiposPlataforma **por ordem**,
+  em vez de uma vez só. Com 2.500 ordens isto eram ~7.500 round-trips
+  à BD e **~15 segundos** de resposta. Corrigido: `CubicagemService`
+  ganhou versões síncronas/puras (`CubicarOrdem`, `Tipificar`) que
+  recebem os dados já carregados; o endpoint de listagem carrega
+  Artigos e TiposPlataforma **uma única vez** e cubica/tipifica todas
+  as ordens em memória. Resultado: **~3,6 segundos** — ainda não é
+  instantâneo (fica em aberto: paginação/filtro por estado, ver secção
+  8), mas já não é uma consulta por ordem.
+- **Validado:** `schema.sql` + `seed-realistic.sql` corridos contra
+  SQL Server 2022 real (Docker) do zero — sem erros, idempotente à
+  segunda execução (~13s a primeira vez, <1s a repetir). A correção de
+  performance testada com o volume real carregado, não só com os
+  dados de exemplo.
+
 ---
 
 ## 8. Em aberto
 
+- **Paginação/filtro em `GET /api/ordens-preparacao`** (ADR-019): já
+  não faz N+1, mas devolve sempre todas as ordens (2.500+ na PoC com
+  dados reais, ~3,6s). Filtrar por defeito às não despachadas, ou
+  paginar, antes de o volume real do cliente (49 mil PS em 18 meses)
+  tornar isto lento outra vez.
 - **Mais contexto do armazém a caminho** (o cliente vai enviar) — a
   planta física, zonas adicionais além de OUTLET/ARMAZÉM
   AUTOMÁTICO/ARMAZÉM (ALVÉOLOS), e as regras de negócio completas.

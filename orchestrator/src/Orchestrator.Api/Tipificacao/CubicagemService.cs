@@ -75,18 +75,29 @@ public class CubicagemService(WopaDbContext db)
     }
 
     // Anexo A.2 — volume de picking de uma Ordem de Preparação: soma das
-    // linhas de todos os PS que a compõem.
+    // linhas de todos os PS que a compõem. Versão async: carrega os
+    // Artigos necessários (1 round-trip). Para listas de várias ordens,
+    // usa a sobrecarga síncrona com um dicionário já carregado — ver
+    // CubicarOrdem — para não repetir a consulta por ordem (N+1).
     public async Task<CubicagemOrdem> CubicarOrdemAsync(IReadOnlyList<OrdemSeparacaoLinhaEntity> linhasPs)
     {
         var skus = linhasPs.Select(l => l.Sku).Distinct().ToList();
         var artigos = await db.Artigos.Where(a => skus.Contains(a.Sku)).ToDictionaryAsync(a => a.Sku);
+        return CubicarOrdem(linhasPs, artigos);
+    }
+
+    // Versão pura/síncrona (sem acesso a BD) — para quando o chamador já
+    // tem os Artigos carregados (ex.: listar muitas ordens de uma vez).
+    public static CubicagemOrdem CubicarOrdem(IReadOnlyList<OrdemSeparacaoLinhaEntity> linhasPs, IReadOnlyDictionary<string, ArtigoEntity> artigosPorSku)
+    {
+        var skus = linhasPs.Select(l => l.Sku).Distinct().ToList();
 
         var linhas = linhasPs
-            .Select(l => CubicarLinha(artigos.GetValueOrDefault(l.Sku), l.Sku, l.Quantidade))
+            .Select(l => CubicarLinha(artigosPorSku.GetValueOrDefault(l.Sku), l.Sku, l.Quantidade))
             .ToList();
 
         var pesoTotal = linhasPs.Sum(l =>
-            artigos.TryGetValue(l.Sku, out var a) && a.PesoUnitarioKg is { } peso ? peso * l.Quantidade : 0m);
+            artigosPorSku.TryGetValue(l.Sku, out var a) && a.PesoUnitarioKg is { } peso ? peso * l.Quantidade : 0m);
 
         return new CubicagemOrdem(
             VolumeCm3: linhas.Sum(l => l.VolumeCm3),
@@ -98,28 +109,42 @@ public class CubicagemService(WopaDbContext db)
 
     // Anexo A.4/A.5 — escolhe o menor cesto onde o volume cabe; acima da
     // maior capacidade, decompõe em multi-plataforma P1(n). vol_ordem = 0
-    // nunca é interpretado como "cabe no menor cesto" (A.4).
+    // nunca é interpretado como "cabe no menor cesto" (A.4). Versão async:
+    // carrega TiposPlataforma (1 round-trip); para listas, usa a
+    // sobrecarga síncrona com os tipos já carregados.
     public async Task<ResultadoTipificacao> TipificarAsync(decimal volumeCm3)
     {
         var tipos = await db.TiposPlataforma.OrderBy(t => t.CapacidadeUtilLitros).ToListAsync();
-        if (tipos.Count == 0)
+        return Tipificar(volumeCm3, tipos);
+    }
+
+    // Versão pura/síncrona — tipos já carregados e ordenados por
+    // capacidade ascendente (ver TiposPlataformaOrdenadosAsync).
+    public static ResultadoTipificacao Tipificar(decimal volumeCm3, IReadOnlyList<TipoPlataformaEntity> tiposOrdenados)
+    {
+        if (tiposOrdenados.Count == 0)
             throw new InvalidOperationException("Não existem tipos de plataforma configurados.");
 
         if (volumeCm3 <= 0)
             return new ResultadoTipificacao(null, "SEM_TIPO", 0);
 
         var volumeLitros = volumeCm3 / 1000m;
-        var menor = tipos.FirstOrDefault(t => volumeLitros <= t.CapacidadeUtilLitros);
+        var menor = tiposOrdenados.FirstOrDefault(t => volumeLitros <= t.CapacidadeUtilLitros);
         if (menor is not null)
             return new ResultadoTipificacao(menor.Codigo, menor.Codigo, 1);
 
         // Excedente: sempre plataformas do maior tipo (P1 por convenção do
         // cliente — simplicidade operacional, mesmo quando o resto caberia
         // num cesto menor).
-        var maior = tipos[^1];
+        var maior = tiposOrdenados[^1];
         var nPlataformas = (int)Math.Ceiling(volumeLitros / maior.CapacidadeUtilLitros);
         return new ResultadoTipificacao(maior.Codigo, $"{maior.Codigo}({nPlataformas})", nPlataformas);
     }
+
+    // Helper para quem vai chamar Tipificar(...) em massa (evita repetir
+    // o ORDER BY por chamada).
+    public async Task<IReadOnlyList<TipoPlataformaEntity>> TiposPlataformaOrdenadosAsync() =>
+        await db.TiposPlataforma.OrderBy(t => t.CapacidadeUtilLitros).ToListAsync();
 
     // Anexo A.8 — padrão de empilhamento cíclico (1 camada pesada + N
     // leves). Limiares de altura ilustrativos, não validados pelo

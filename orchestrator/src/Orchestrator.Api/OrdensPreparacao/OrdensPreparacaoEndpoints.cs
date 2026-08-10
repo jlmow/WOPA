@@ -88,16 +88,30 @@ public static class OrdensPreparacaoEndpoints
         })
         .WithName("ReceberOrdemPreparacao");
 
-        group.MapGet("/", async (WopaDbContext db, CubicagemService cubicagem) =>
+        // Lista todas as ordens numa só passagem: carrega Artigos e
+        // TiposPlataforma UMA vez (em vez de por ordem) e cubica/tipifica
+        // em memória — com volumes reais (milhares de ordens, ver
+        // ARCHITECTURE.md ADR-019) uma consulta por ordem tornava isto
+        // lento a sério (~15s para 2500 ordens); esta versão faz o mesmo
+        // em poucas centenas de ms.
+        group.MapGet("/", async (WopaDbContext db) =>
         {
-            var ids = await db.OrdensPreparacao.OrderByDescending(o => o.RecebidaEm).Select(o => o.Id).ToListAsync();
-            var resultado = new List<OrdemPreparacaoResumo>();
-            foreach (var id in ids)
-            {
-                var dto = await ParaResumoAsync(db, id, cubicagem);
-                if (dto is not null) resultado.Add(dto);
-            }
-            return resultado;
+            // AsSplitQuery: duas coleções irmãs (Ps.Linhas e Plataformas)
+            // numa só query com JOIN multiplicavam linhas desnecessariamente
+            // (produto cartesiano) — consultas separadas para cada coleção
+            // são mais rápidas aqui, mesmo sendo mais round-trips.
+            var ordens = await db.OrdensPreparacao
+                .AsSplitQuery()
+                .Include(o => o.Ps).ThenInclude(p => p.Linhas)
+                .Include(o => o.Plataformas)
+                .OrderByDescending(o => o.RecebidaEm)
+                .ToListAsync();
+
+            var todosSkus = ordens.SelectMany(o => o.Ps.SelectMany(p => p.Linhas)).Select(l => l.Sku).Distinct().ToList();
+            var artigos = await db.Artigos.Where(a => todosSkus.Contains(a.Sku)).ToDictionaryAsync(a => a.Sku);
+            var tipos = await db.TiposPlataforma.OrderBy(t => t.CapacidadeUtilLitros).ToListAsync();
+
+            return ordens.Select(o => ParaResumo(o, artigos, tipos)).ToList();
         })
         .WithName("ListarOrdensPreparacao");
 
@@ -174,14 +188,25 @@ public static class OrdensPreparacaoEndpoints
             .SingleOrDefaultAsync(o => o.Id == id);
         if (ordem is null) return null;
 
+        var skus = ordem.Ps.SelectMany(p => p.Linhas).Select(l => l.Sku).Distinct().ToList();
+        var artigos = await db.Artigos.Where(a => skus.Contains(a.Sku)).ToDictionaryAsync(a => a.Sku);
+        var tipos = await cubicagem.TiposPlataformaOrdenadosAsync();
+        return ParaResumo(ordem, artigos, tipos);
+    }
+
+    private static OrdemPreparacaoResumo ParaResumo(
+        OrdemPreparacaoEntity ordem,
+        IReadOnlyDictionary<string, ArtigoEntity> artigosPorSku,
+        IReadOnlyList<TipoPlataformaEntity> tiposOrdenados)
+    {
         var todasLinhas = ordem.Ps.SelectMany(p => p.Linhas).ToList();
         decimal? volumeLitros = null;
         decimal? pesoKg = null;
         string? tipoIndicativo = null;
         if (todasLinhas.Count > 0)
         {
-            var resultado = await cubicagem.CubicarOrdemAsync(todasLinhas);
-            var tipo = await cubicagem.TipificarAsync(resultado.VolumeCm3);
+            var resultado = CubicagemService.CubicarOrdem(todasLinhas, artigosPorSku);
+            var tipo = CubicagemService.Tipificar(resultado.VolumeCm3, tiposOrdenados);
             volumeLitros = resultado.VolumeLitros;
             pesoKg = resultado.PesoKg;
             tipoIndicativo = tipo.Notacao;
