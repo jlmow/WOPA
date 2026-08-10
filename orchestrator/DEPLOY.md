@@ -8,6 +8,27 @@ Confirmei aqui que `dotnet publish` já gera o `web.config` correto para
 IIS automaticamente (hosting in-process, sem precisar de tocar no
 projeto) — não há nada a ajustar no código para isto funcionar.
 
+## 0. Caminho automático: `deploy/install-wopa.ps1`
+
+Se preferires não seguir os passos manuais abaixo, há um script
+PowerShell que faz tudo — pré-requisitos, base de dados, publicar
+`orchestrator`, compilar `pda`/`controller`, e configurar os três
+sites no IIS:
+
+```powershell
+# copia o repositório para o servidor (ex. C:\wopa\install), depois:
+cd C:\wopa\install\deploy
+.\install-wopa.ps1 -SqlServer "WOPASRV\wopa" -HostName "172.16.4.15" -SeedRealistic
+```
+
+Corre `Get-Help .\install-wopa.ps1 -Full` para todos os parâmetros
+(portas, caminhos, etc.). **Importante:** este script foi escrito e
+revisto com cuidado, mas nunca correu num Windows Server real — o
+ambiente onde foi escrito não tem acesso a um. Corre-o numa máquina de
+teste primeiro se puderes, e avisa-me de qualquer erro para eu
+corrigir. As secções 1–6 abaixo continuam válidas como referência do
+que o script faz (e para quando quiseres fazer só uma parte à mão).
+
 ## 1. Pré-requisitos no servidor Windows
 
 1. **IIS** instalado, com o módulo **URL Rewrite** (necessário para o

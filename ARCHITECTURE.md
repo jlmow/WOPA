@@ -469,7 +469,7 @@ começar pela Fase 1 e crescer para a Fase 2.
 | Missões — máquina de estados (A.13) | ✅ PoC funcional | `Criada → Atribuida → EmExecucao → (Pausada ↔ EmExecucao) → Concluida | FechadaIncompleta`, com motivo de pausa e timestamps; `pausar`/`retomar`/`fechar`/`reatribuir` em `/api/missoes` |
 | `pda` — "próxima missão" | ✅ PoC funcional | `GET /api/picking/mission`/`tasks` resolvem dinamicamente a missão de picking mais antiga ainda ativa, em vez de uma fixa — testado com duas missões em fila |
 | Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso, idempotente (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012/016). O `orchestrator` já lê/escreve nela via EF Core |
-| Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
+| Deployment (IIS, instalação no PDA) | ✅ Documentado, ⚠️ script não testado num Windows Server real | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md`, e agora `deploy/install-wopa.ps1` (instalação automática de ponta a ponta) — nada disto correu contra o servidor/dispositivo real do cliente (sem acesso); o `.ps1` foi validado por parsing sintático e pela lógica testável fora do Windows (geração de JSON/env, CORS), mas os cmdlets do IIS (`WebAdministration`) nunca correram a sério |
 
 ---
 

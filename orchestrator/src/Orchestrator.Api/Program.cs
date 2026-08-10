@@ -29,16 +29,18 @@ builder.Services.AddDbContext<WopaDbContext>(options =>
 // stateless por cima do DbContext, por isso pode ser scoped como ele.
 builder.Services.AddScoped<CubicagemService>();
 
-// PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
-// Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio
-// e este CORS deixa de ser necessário.
-const string DevClientsPolicy = "DevClients";
+// As origens de CORS vêm da configuração (Cors:AllowedOrigins), com os dev
+// servers do Vite como omissão — em produção, install-wopa.ps1 escreve
+// appsettings.Production.json com os URLs reais do pda/controller no IIS.
+// Se ficarem atrás do mesmo domínio/IIS que o orchestrator, o CORS deixa de
+// ser necessário, mas continua inofensivo tê-lo configurado.
+const string ClientsPolicy = "Clients";
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(DevClientsPolicy, policy =>
-        policy.WithOrigins(
-                  "http://localhost:5173", "http://127.0.0.1:5173", // pda
-                  "http://localhost:5174", "http://127.0.0.1:5174") // controller
+    options.AddPolicy(ClientsPolicy, policy =>
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
@@ -51,7 +53,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors(DevClientsPolicy);
+app.UseCors(ClientsPolicy);
 
 // ADR-009: pedido leve para os clientes (sobretudo o pda) verificarem se o
 // servidor está mesmo alcançável, não só se há rede.
