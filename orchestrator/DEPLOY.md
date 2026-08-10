@@ -32,6 +32,35 @@ Isto gera os binários + `web.config` prontos para IIS na pasta de
 destino. Repete este comando sempre que houver uma versão nova — não
 apagues a pasta `logs` se já existir (ver secção 5).
 
+## 2.1 Criar a base de dados (antes de tudo o resto)
+
+A partir de qualquer máquina com acesso à rede do servidor SQL Server
+(o próprio servidor, ou uma máquina com `sqlcmd`/SSMS instalado e VPN
+para essa rede — **não é possível a partir deste ambiente de
+desenvolvimento**, que corre isolado numa sandbox sem rota até à rede
+do cliente):
+
+```powershell
+sqlcmd -S <servidor>\<instância> -U sa -P "<password>" -C -i database\schema.sql
+```
+
+Substitui `<servidor>\<instância>` e `<password>` pelos dados reais do
+teu SQL Server. O script:
+
+- Cria a base de dados `WOPA` se não existir (`CREATE DATABASE`).
+- Cria todas as tabelas, guardadas por `IF NOT EXISTS` — seguro para
+  correr mais que uma vez.
+- Insere dados de exemplo (seed) para a PoC ter algo real para
+  trabalhar assim que a base de dados nasce — zonas, um terminal, um
+  operador de exemplo (número `42`, PIN `1234`), uma Ordem de
+  Preparação/Plataforma/Missão de exemplo.
+
+Confirma no fim que apareceu `Base de dados WOPA pronta.` na consola.
+Se a ligação ao SQL Server exigir `TrustServerCertificate` ou outra
+opção de encriptação diferente da tua rede, ajusta os flags do
+`sqlcmd` (`-C` já assume "confiar no certificado do servidor", comum
+em redes internas sem certificado válido).
+
 ## 3. Criar o site no IIS
 
 1. **Application Pools** → criar um novo, ex. `WOPA-Orchestrator`.
@@ -58,19 +87,32 @@ apagues a pasta `logs` se já existir (ver secção 5).
   ARCHITECTURE.md secção 1) e a política de CORS deixa de ser
   necessária; se ainda assim ficarem em domínios/portas diferentes,
   ajusta `DevClientsPolicy` no `Program.cs` para os domínios reais.
-- **Base de dados**: corre `database/schema.sql` no SQL Server do
-  cliente primeiro (cria a BD `WOPA` e o schema completo). Depois, o
-  `orchestrator` precisa da connection string real — cria
-  `appsettings.Production.json` ao lado de `appsettings.json` com:
+- **Base de dados**: corre `database/schema.sql` primeiro (ver secção
+  2.1). Depois, o `orchestrator` precisa da connection string real —
+  cria `appsettings.Production.json` ao lado de `appsettings.json`
+  com:
   ```json
-  { "ConnectionStrings": { "Wopa": "Server=<servidor>;Database=WOPA;User Id=<user>;Password=<pass>;TrustServerCertificate=True;" } }
+  { "ConnectionStrings": { "Wopa": "Server=<servidor>\\<instância>;Database=WOPA;User Id=sa;Password=<password>;TrustServerCertificate=True;" } }
   ```
-  ou define a variável de ambiente `ConnectionStrings__Wopa` no
-  Application Pool do IIS (mais seguro do que deixar a password em
-  ficheiro). **Nunca uses a connection string de
-  `appsettings.Development.json`** — essa aponta para um contentor
-  Docker local usado só para testar isto em desenvolvimento, não é o
-  servidor do cliente.
+  Se o servidor SQL não tiver um certificado TLS válido (comum em
+  redes internas), mantém `TrustServerCertificate=True` (equivalente
+  ao "Trust Server Certificate" do SSMS) ou usa `Encrypt=False` se a
+  rede não tiver encriptação nenhuma configurada — replica aqui o
+  mesmo que já usas para ligar via SSMS.
+  Preferível a `appsettings.Production.json`: define a variável de
+  ambiente `ConnectionStrings__Wopa` no Application Pool do IIS (mais
+  seguro do que deixar a password em ficheiro, e evita que a password
+  fique commitada por engano no repositório). **Nunca uses a
+  connection string de `appsettings.Development.json`** — essa aponta
+  para um contentor Docker local usado só para testar isto em
+  desenvolvimento, não é o servidor do cliente.
+- **Dados mestre de artigo**: o `orchestrator` tem
+  `POST /api/artigos` (upsert em lote) para carregar o catálogo real
+  (RF-ENT-03) — o seed do `schema.sql` só tem 3 artigos de exemplo. A
+  integração real com o PHC para manter isto atualizado ainda está por
+  desenhar (ver ARCHITECTURE.md secção 8); entretanto pode ser
+  populado manualmente com um script que exporte do PHC e chame este
+  endpoint.
 - **HTTPS**: adiciona um binding HTTPS ao site com um certificado
   válido para a rede do cliente; hoje a app não força HTTPS (é uma
   decisão deliberada da PoC, ver `Program.cs` — sem
@@ -113,13 +155,12 @@ desenvolvimento) — cria um `.env.production` em `pda/` e `controller/`:
 VITE_ORCHESTRATOR_URL=http://api.wopa.local
 ```
 
-**Importante para o `pda`**: já tem um `public/web.config` com a regra
-de SPA fallback (serve sempre `index.html` em rotas desconhecidas, para
-`/login`, `/modulos`, etc. funcionarem em refresh) — é copiado
-automaticamente para `dist/` no build, não precisas de o recriar. O
-`controller` ainda não tem este `web.config` — cria um igual em
-`controller/public/web.config` antes do primeiro deployment em IIS
-(o ficheiro do `pda` serve de modelo).
+**Importante:** tanto `pda/public/web.config` como
+`controller/public/web.config` já têm a regra de SPA fallback (serve
+sempre `index.html` em rotas desconhecidas, para `/login`,
+`/ordens-preparacao`, etc. funcionarem em refresh) — copiados
+automaticamente para `dist/` no build de cada um, não precisas de
+criar nada.
 
 ## 7. Caminho rápido para uma prova de conceito, sem IIS
 
