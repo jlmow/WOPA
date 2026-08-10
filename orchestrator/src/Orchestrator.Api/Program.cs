@@ -1,10 +1,15 @@
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Orchestrator.Api.Artigos;
 using Orchestrator.Api.Config;
 using Orchestrator.Api.Data;
+using Orchestrator.Api.Missoes;
 using Orchestrator.Api.Modulos;
+using Orchestrator.Api.OrdensPreparacao;
 using Orchestrator.Api.OrdensSeparacao;
 using Orchestrator.Api.Picking;
+using Orchestrator.Api.Plataformas;
+using Orchestrator.Api.Tipificacao;
 using Orchestrator.Api.Zonas;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +25,10 @@ builder.Services.AddSwaggerGen();
 // variável de ambiente ConnectionStrings__Wopa — nunca aqui no código.
 builder.Services.AddDbContext<WopaDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Wopa")));
+
+// Anexo A do documento de requisitos v0.4: cubicagem/tipificação —
+// stateless por cima do DbContext, por isso pode ser scoped como ele.
+builder.Services.AddScoped<CubicagemService>();
 
 // PoC: os frontends (pda, controller) correm em dev servers separados (Vite).
 // Em produção, orchestrator e frontends ficam atrás do mesmo IIS/domínio
@@ -54,5 +63,9 @@ app.MapZonaEndpoints();
 app.MapModuloEndpoints();
 app.MapRegrasMissaoEndpoints();
 app.MapOrdensSeparacaoEndpoints();
+app.MapArtigosEndpoints();
+app.MapOrdensPreparacaoEndpoints();
+app.MapPlataformasEndpoints();
+app.MapMissoesEndpoints();
 
 app.Run();

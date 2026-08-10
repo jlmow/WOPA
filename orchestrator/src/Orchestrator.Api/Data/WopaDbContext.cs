@@ -25,6 +25,9 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
     public DbSet<MissaoEntity> Missoes => Set<MissaoEntity>();
     public DbSet<MissaoLinhaEntity> MissaoLinhas => Set<MissaoLinhaEntity>();
     public DbSet<OperacaoProcessadaEntity> OperacoesProcessadas => Set<OperacaoProcessadaEntity>();
+    public DbSet<ArtigoEntity> Artigos => Set<ArtigoEntity>();
+    public DbSet<OrdemPreparacaoEntity> OrdensPreparacao => Set<OrdemPreparacaoEntity>();
+    public DbSet<PlataformaEntity> Plataformas => Set<PlataformaEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -94,6 +97,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
             e.ToTable("OrdensSeparacao");
             e.HasKey(x => x.Id);
             e.HasMany(x => x.Linhas).WithOne().HasForeignKey(x => x.OrdemSeparacaoId);
+            e.HasOne<OrdemPreparacaoEntity>().WithMany(x => x.Ps).HasForeignKey(x => x.OrdemPreparacaoId);
         });
 
         modelBuilder.Entity<OrdemSeparacaoLinhaEntity>(e =>
@@ -101,6 +105,31 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
             e.ToTable("OrdensSeparacaoLinhas");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Alveolo).WithMany().HasForeignKey(x => x.AlveoloId);
+            // Sem isto, o EF não sabe que PlataformaId depende de
+            // Plataformas.Id e pode tentar o UPDATE antes do INSERT da
+            // plataforma nova na mesma transação (bug real encontrado ao
+            // testar a tipificação a sério contra SQL Server).
+            e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
+        });
+
+        modelBuilder.Entity<ArtigoEntity>(e =>
+        {
+            e.ToTable("Artigos");
+            e.HasKey(x => x.Sku);
+        });
+
+        modelBuilder.Entity<OrdemPreparacaoEntity>(e =>
+        {
+            e.ToTable("OrdensPreparacao");
+            e.HasKey(x => x.Id);
+        });
+
+        modelBuilder.Entity<PlataformaEntity>(e =>
+        {
+            e.ToTable("Plataformas");
+            e.HasKey(x => x.Id);
+            e.HasOne(x => x.TipoPlataforma).WithMany().HasForeignKey(x => x.TipoPlataformaCodigo);
+            e.HasOne<OrdemPreparacaoEntity>().WithMany(x => x.Plataformas).HasForeignKey(x => x.OrdemPreparacaoId);
         });
 
         modelBuilder.Entity<MissaoEntity>(e =>
@@ -108,6 +137,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
             e.ToTable("MISSAO");
             e.HasKey(x => x.Id);
             e.HasMany(x => x.Linhas).WithOne().HasForeignKey(x => x.MissaoId);
+            e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
         });
 
         modelBuilder.Entity<MissaoLinhaEntity>(e =>

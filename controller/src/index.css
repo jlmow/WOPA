@@ -158,3 +158,118 @@ body {
 .status-tag--Concluida {
   color: var(--concluida);
 }
+.status-tag--erro {
+  color: var(--erro);
+  border-color: var(--erro);
+}
+
+.status-tag--op-Aberta,
+.status-tag--plat-EmPicking,
+.status-tag--missao-Criada,
+.status-tag--missao-Atribuida {
+  color: var(--pendente);
+}
+.status-tag--op-Tipificada,
+.status-tag--plat-NoBuffer,
+.status-tag--plat-EmPacking,
+.status-tag--missao-EmExecucao {
+  color: var(--em-progresso);
+  border-color: var(--gold);
+}
+.status-tag--op-Despachada,
+.status-tag--plat-Concluida,
+.status-tag--missao-Concluida {
+  color: var(--concluida);
+}
+.status-tag--missao-Pausada,
+.status-tag--missao-FechadaIncompleta {
+  color: var(--erro);
+  border-color: var(--erro);
+}
+
+/* Painéis (Ordens de Preparação, composição de PS) */
+.panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+
+.panel--destaque {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
+.panel h2 {
+  font-family: var(--heading-font);
+  font-weight: 400;
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.panel__header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+
+.form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.form-row input,
+.form-row select,
+.acoes-cell select {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  min-width: 160px;
+}
+
+.button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--text);
+  background: var(--card-bg);
+  color: var(--text);
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button--primary {
+  background: var(--text);
+  color: var(--card-bg);
+}
+
+.button--small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.acoes-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

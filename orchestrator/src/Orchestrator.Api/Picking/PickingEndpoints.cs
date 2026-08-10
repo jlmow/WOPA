@@ -20,24 +20,34 @@ public static class PickingEndpoints
 
         group.MapGet("/tasks", async (WopaDbContext db) =>
         {
+            var missao = await ObterOuAtribuirMissaoAtualAsync(db);
+            if (missao is null) return Results.Ok(Array.Empty<PickingTask>());
+
             var linhas = await db.MissaoLinhas
                 .Include(l => l.Alveolo)
+                .Where(l => l.MissaoId == missao.Id)
                 .OrderBy(l => l.Alveolo!.Codigo)
                 .ToListAsync();
-            return linhas.Select(ParaDto);
+            return Results.Ok(linhas.Select(ParaDto));
         })
         .WithName("ListarTarefasPicking");
 
         group.MapGet("/mission", async (WopaDbContext db) =>
         {
-            // PoC: só existe uma missão (ADR-008: "próxima missão" ainda por
-            // implementar — falta o motor que cria missões a partir das
-            // Ordens de Separação, ver ADR-011).
-            var missao = await db.Missoes.FirstAsync();
+            // "Próxima missão" (ADR-008/011): a mais antiga ainda não
+            // concluída/fechada, entre os centros de trabalho Picking.
+            // Atribuição por operador/zona/dispositivo continua por
+            // decidir (ver ARCHITECTURE.md secção 8) — nesta PoC há sempre
+            // no máximo uma missão de picking ativa, o que já cumpre o
+            // "uma missão de cada vez" do ADR-008.
+            var missao = await ObterOuAtribuirMissaoAtualAsync(db);
+            if (missao is null)
+                return Results.NotFound(new ErrorResponse("Sem missão de picking disponível."));
+
             var total = await db.MissaoLinhas.CountAsync(l => l.MissaoId == missao.Id);
             var concluidas = await db.MissaoLinhas.CountAsync(l =>
                 l.MissaoId == missao.Id && l.Estado == PickingTaskStatus.Concluida);
-            return new MissionSummary(missao.Codigo, total, concluidas);
+            return Results.Ok(new MissionSummary(missao.Codigo, total, concluidas));
         })
         .WithName("ObterResumoMissaoPicking");
 
@@ -74,6 +84,15 @@ public static class PickingEndpoints
 
             task.QuantidadeLida = Math.Min(task.QuantidadeLida + 1, task.QuantidadeAlvo);
             task.Estado = PickingTaskStatus.EmProgresso;
+
+            // A.13: a primeira leitura de uma missão atribuída marca o
+            // início real da execução (distinto de "atribuída").
+            var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
+            if (missao.Estado == "Atribuida")
+            {
+                missao.Estado = "EmExecucao";
+                missao.IniciadaEm = DateTime.UtcNow;
+            }
 
             if (request.OperacaoId is { } novoOpId)
                 db.OperacoesProcessadas.Add(new OperacaoProcessadaEntity
@@ -114,6 +133,17 @@ public static class PickingEndpoints
                     Tipo = "confirm",
                 });
 
+            // A.13: quando a última linha da missão fica concluída, a
+            // própria missão fecha e regista quando terminou.
+            var todasConcluidas = !await db.MissaoLinhas
+                .AnyAsync(l => l.MissaoId == task.MissaoId && l.Id != task.Id && l.Estado != PickingTaskStatus.Concluida);
+            if (todasConcluidas)
+            {
+                var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
+                missao.Estado = "Concluida";
+                missao.ConcluidaEm = DateTime.UtcNow;
+            }
+
             await db.SaveChangesAsync();
             return Results.Ok(ParaDto(task));
         })
@@ -132,7 +162,12 @@ public static class PickingEndpoints
             var missoes = await db.Missoes.ToListAsync();
             foreach (var missao in missoes)
             {
-                missao.Estado = "Pendente";
+                missao.Estado = "Atribuida";
+                missao.MotivoPausa = null;
+                missao.AtribuidaEm = DateTime.UtcNow;
+                missao.IniciadaEm = null;
+                missao.PausadaEm = null;
+                missao.RetomadaEm = null;
                 missao.ConcluidaEm = null;
             }
 
@@ -142,6 +177,27 @@ public static class PickingEndpoints
             return Results.Ok(linhas.Select(ParaDto));
         })
         .WithName("ResetPickingPoc");
+    }
+
+    // "Uma missão de cada vez" (ADR-008): a mais antiga entre as ainda não
+    // concluídas/fechadas do centro de trabalho Picking. Atribui-a
+    // automaticamente (Criada -> Atribuida) na primeira vez que é pedida.
+    private static async Task<MissaoEntity?> ObterOuAtribuirMissaoAtualAsync(WopaDbContext db)
+    {
+        var missao = await db.Missoes
+            .Where(m => m.CentroTrabalho == "Picking" && m.Estado != "Concluida" && m.Estado != "FechadaIncompleta")
+            .OrderBy(m => m.CriadaEm)
+            .FirstOrDefaultAsync();
+        if (missao is null) return null;
+
+        if (missao.Estado == "Criada")
+        {
+            missao.Estado = "Atribuida";
+            missao.AtribuidaEm = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        return missao;
     }
 
     // Opção A (ARCHITECTURE.md ADR-012): a API pública mantém o formato

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Estado** | Em desenvolvimento — validado com PoC funcional |
-| **Última atualização** | Adoção do documento "Requisitos Funcionais WOPA v0.4" como fonte autoritativa do modelo de negócio (ver ADR-015) |
+| **Última atualização** | Motor PS → Ordem de Preparação → Plataforma → Missão implementado e testado de ponta a ponta entre `controller` e `pda`/picking (ver ADR-016) |
 | **Âmbito** | Todos os módulos do projeto WOPA (Warehouse Order & Picking Automation) |
 | **Fonte de negócio autoritativa** | `Requisitos Funcionais, Desenho da Solução e Arquitectura — WOPA v0.4` (agosto 2026), fornecido pelo cliente. Onde este documento e as decisões anteriores registadas aqui entrarem em conflito, **o v0.4 vence** — exceto nos dois pontos explicitamente revistos no ADR-015 (stack do PDA e fronteira de escrita) |
 
@@ -446,12 +446,16 @@ começar pela Fase 1 e crescer para a Fase 2.
 | `pda` — offline-first (`picking`) | ✅ PoC funcional | IndexedDB + fila de saída, testado com corte de rede real (ADR-007) |
 | `pda` — indicador de ligação real | ✅ PoC funcional | Verificação por `/health`, presente em todos os ecrãs (ADR-009) |
 | `pda` — módulos `transporte`, `abastecimento` | ⏳ Por começar | Já aparecem no seletor de módulos como "em breve"; seguem a mesma stack e os mesmos princípios de UX do `picking` |
-| `controller` | 🚧 Em construção | Scaffold TypeScript/React/Vite, layout desktop (ver ADR-006) |
+| `controller` — PS, Ordens de Preparação, Missões | ✅ PoC funcional, ponta a ponta | Três ecrãs reais (não só leitura): compor Ordem de Preparação a partir de PS selecionados, tipificar (gera Plataformas), despachar (gera Missão), e gerir missões (pausar/retomar/fechar/reatribuir) — ver ADR-016. Testado com browser real contra SQL Server real |
 | `core-config` | ⏳ Por começar | Segue a mesma stack do `controller` quando arrancar; vai ser onde as `RegrasMissao` (ADR-010) passam a ser editáveis |
 | `packing` | ⏳ Por começar | |
 | Regras de missão configuráveis | ✅ Persistido em SQL Server | `GET`/`PUT /api/config/regras-missao` no `orchestrator`, agora na tabela `RegrasMissao` (ADR-010/012) |
-| Receção de Ordens de Separação | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-separacao`, testado, agora grava mesmo; só recebe e guarda — ainda não cria missões (ADR-011) |
-| Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012). O `orchestrator` já lê/escreve nela via EF Core |
+| Receção de PS (Ordens de Separação) | ✅ Persistido em SQL Server | `POST`/`GET /api/ordens-separacao`, com campos RF-ENT-01 (cliente/canal/morada/data). Ganhou cubicagem/tipificação indicativa (RF-CTL-01) — ver ADR-016 |
+| Cubicagem/tipificação (Anexo A) | ✅ PoC funcional | `CubicagemService`: A.1 (cubicagem de linha), A.2 (volume de ordem), A.4/A.5 (tipo + decomposição P1(n)), A.8 (índice de camada) — limiares lidos de `TiposPlataforma`, não hardcoded. Testado com SKUs reais |
+| Ordem de Preparação → Plataforma → Missão | ✅ PoC funcional, ponta a ponta | `POST /api/ordens-preparacao` (compor), `POST .../tipificar` (gera Plataformas), `POST /api/plataformas/{id}/despachar` (gera Missão de picking) — ver ADR-016 |
+| Missões — máquina de estados (A.13) | ✅ PoC funcional | `Criada → Atribuida → EmExecucao → (Pausada ↔ EmExecucao) → Concluida | FechadaIncompleta`, com motivo de pausa e timestamps; `pausar`/`retomar`/`fechar`/`reatribuir` em `/api/missoes` |
+| `pda` — "próxima missão" | ✅ PoC funcional | `GET /api/picking/mission`/`tasks` resolvem dinamicamente a missão de picking mais antiga ainda ativa, em vez de uma fixa — testado com duas missões em fila |
+| Base de dados WOPA (SQL Server) | ✅ Testada contra uma instância real | `orchestrator/database/schema.sql` corrido com sucesso, idempotente (SQL Server 2022 em Docker, usado só para validar neste ambiente de desenvolvimento — ver ADR-012/016). O `orchestrator` já lê/escreve nela via EF Core |
 | Deployment (IIS, instalação no PDA) | ✅ Documentado | `orchestrator/DEPLOY.md`, `pda/INSTALAR-NO-PDA.md` — não executado por mim (sem acesso ao servidor/dispositivo do cliente) |
 
 ---
@@ -1002,6 +1006,71 @@ começar pela Fase 1 e crescer para a Fase 2.
     mas não para estas; proponho nomes descritivos até indicação em
     contrário.
 
+### ADR-016 — Motor PS → Ordem de Preparação → Plataforma → Missão implementado (PoC controller/picking)
+
+- **Contexto:** o trabalho de schema da consequência do ADR-015
+  (secção 8.1) foi feito, para dar ao `controller` e ao `pda` uma PoC
+  próxima do sistema real a implementar, cobrindo a Fase 1 do
+  faseamento do v0.4 (tipificação P1, missões de picking).
+- **Decisão — schema:** `database/schema.sql` ganhou `Artigos` (dados
+  mestre, RF-ENT-03), `OrdensPreparacao`, `Plataformas`, e
+  `OrdensSeparacaoLinhas.PlataformaId` (a que plataforma uma linha de
+  PS foi destinada). `TiposPlataforma` perdeu `P0` e passou a ter
+  `CapacidadeUtilLitros` com os valores corretos da secção 4.7 (P1
+  384L, P2 192L, P4 96L). `MISSAO` ganhou `CentroTrabalho`,
+  `PlataformaId` e os campos de A.13 (`MotivoPausa`,
+  `AtribuidaEm`/`IniciadaEm`/`PausadaEm`/`RetomadaEm`). Tudo por `ALTER
+  TABLE` guardado (idempotente), sem quebrar o schema já testado.
+- **Decisão — motor de cubicagem/tipificação:** `CubicagemService`
+  (`orchestrator/src/Orchestrator.Api/Tipificacao/`) implementa A.1
+  (cubicagem de linha), A.2 (volume de ordem), A.4 (escolha de tipo),
+  A.5 (decomposição `P1(n)`) e A.8 (índice de camada, com os limiares
+  de altura ilustrativos do próprio documento — 140cm/180cm, não
+  validados). Os limiares de volume vêm de `TiposPlataforma` (consulta
+  à BD), não são constantes de código — cumpre o requisito explícito
+  de A.1/A.4.
+- **Decisão — circuito completo:** `POST /api/ordens-preparacao`
+  (compor, RF-CTL-02) → `POST .../tipificar` (cubica + tipifica + gera
+  Plataformas, RF-CTL-01/05) → `POST /api/plataformas/{id}/despachar`
+  (atribui célula e gera a Missão de picking, RF-CTL-06/RF-PIC-01) →
+  `GET /api/picking/mission`/`tasks` já não servem uma missão fixa,
+  resolvem dinamicamente a mais antiga ainda ativa (ADR-008 "uma de
+  cada vez", agora a sério com mais que uma missão possível). O
+  `controller` ganhou três ecrãs reais: `PsPage` (compor), 
+  `OrdensPreparacaoPage` (tipificar/despachar), `MissoesPage` (agora
+  ligada a `/api/missoes`, com pausar/retomar/fechar/reatribuir — A.13
+  — em vez de só leitura).
+- **Simplificações desta PoC, deliberadas e documentadas** (não é o
+  desenho final):
+  1. **Sem Cenário B (plataformas partilhadas P2/P4).** O motor só
+     implementa o Cenário A (ordem ≥P1, mono-ordem por plataforma) —
+     é exatamente o que a Fase 1 do v0.4 pede. Cenário B
+     (partilha por cesto entre ordens pequenas) fica para a Fase 2.
+  2. **Distribuição de linhas por plataforma é round-robin**, quando a
+     tipificação gera mais que uma plataforma (`P1(n)`). O critério
+     real por camada/volume é uma "DECISÃO PENDENTE" do próprio
+     documento (A.5/A.8) — não havia informação para fazer melhor.
+  3. **Sem tabela de Cesto-instância.** Como só o Cenário A está
+     implementado (1 cesto = 1 plataforma sempre), a distinção não
+     fazia diferença prática ainda — fica para quando o Cenário B for
+     implementado.
+  4. **`RegrasMissao` (ADR-010) ainda não entra neste motor** — o
+     despacho é sempre manual, um PS de cada vez, uma plataforma de
+     cada vez. A composição automática de ordens/plataformas
+     (RF-CTL-02/04) fica para depois.
+- **Validado, não assumido:** todo o circuito foi testado contra uma
+  instância SQL Server 2022 real (Docker), incluindo um bug real
+  encontrado e corrigido ao testar (não ao rever código): faltava
+  mapear a relação `OrdensSeparacaoLinhas.PlataformaId →
+  Plataformas.Id` no `WopaDbContext` — sem isso, o EF Core não sabia
+  que precisava de inserir a `Plataforma` nova antes de atualizar a
+  linha que aponta para ela, e falhava com violação de FK. Corrigido
+  com `HasOne<PlataformaEntity>().WithMany().HasForeignKey(...)`.
+  Depois disso, o circuito completo (PS → compor → tipificar →
+  despachar → `pda` a picar → missão concluída → próxima missão
+  disponível) foi corrido de ponta a ponta com um browser real,
+  incluindo pausar/retomar uma missão a meio.
+
 ---
 
 ## 8. Em aberto
@@ -1013,11 +1082,11 @@ começar pela Fase 1 e crescer para a Fase 2.
   configurável, não hardcoded; entronca nas `RegrasMissao` (ADR-010).
 - Comportamento das linhas do `ARMAZEM AUTOMATICO` no `pda` — chegam a
   um operador humano ou são geridas por um sistema automático à parte?
-- **`controller` — ecrã de missões precisa de crescer**: hoje só lê
-  (tabela read-only); o cliente descreveu-o como "front office" com
-  visão do que está a decorrer/a entrar/por fazer e capacidade de
-  **alterar missões manualmente**, fugindo às regras automáticas —
-  ainda por desenhar/construir.
+- **`controller` — ecrã de missões, próximo passo:** já tem
+  pausar/retomar/fechar/reatribuir (A.13, ADR-016) — falta a visão de
+  "front office" mais rica que o cliente pediu (ocupação de buffers,
+  plataformas em circulação, alertas de envelhecimento — RF-CTL-10) e
+  a navegação hierárquica entre PS/Ordem/Plataforma/Missão (RF-CTL-11).
 - **Login user+PIN em falta em quase todo o lado (ADR-013):** o `pda`
   pede só o número (sem PIN, sem validar contra `US`); `controller`,
   `core-config` e `packing` não têm ecrã de login nenhum ainda.
@@ -1049,41 +1118,47 @@ começar pela Fase 1 e crescer para a Fase 2.
   passou a "quem chama" `POST /api/ordens-separacao`. Falta confirmar
   se é o PHC, o OrdersHub, ou os dois, e se é uma integração direta ou
   passa por um conector/middleware intermédio.
-- **Regras de negócio para criação de missões no `controller`**
-  (ADR-008) — já há um mecanismo básico de configuração (ADR-010),
-  mas os valores/critérios reais e o motor que efetivamente cria
-  missões a partir de Ordens de Separação ainda faltam.
-- Endpoint no `orchestrator` para "próxima missão" por
-  operador/zona/dispositivo — hoje a PoC só serve uma missão fixa;
-  falta decidir o critério de atribuição (fila simples? prioridade?
-  por zona do operador?).
+- **Composição/tipificação ainda manual (ADR-016):** o `controller` já
+  cria Ordens de Preparação, tipifica e despacha a sério — mas a
+  composição de PS em ordens é sempre manual (RF-CTL-02 só tem a
+  primeira metade: falta a proposta automática de agrupamento) e o
+  motor não usa `RegrasMissao` (ADR-010) para nada ainda — cada
+  despacho é um PS/plataforma de cada vez, sem lote nem critério de
+  agrupamento automático.
+- **"Próxima missão": critério de atribuição.** `GET
+  /api/picking/mission`/`tasks` já resolvem dinamicamente a missão
+  mais antiga ainda ativa (ADR-016) em vez de uma fixa — mas sempre a
+  mesma para qualquer PDA que pergunte. Falta um critério por
+  operador/zona/dispositivo quando houver mais que um PDA a picar ao
+  mesmo tempo (fila simples? prioridade? por zona do operador?).
+- **Cenário B (plataformas partilhadas P4/P2) não implementado**
+  (ADR-016) — só o Cenário A (ordem ≥P1, mono-ordem) tem motor. Fica
+  para a Fase 2 do faseamento do v0.4 (secção 4.7), junto com a
+  composição de cestos por afinidade (A.7, "DECISÃO PENDENTE" do
+  próprio documento) e a distribuição de linhas por camada em vez de
+  round-robin (ver ADR-016, simplificação 2).
+- **Dados mestre de artigo (`Artigos`) só têm o seed de exemplo** —
+  falta o endpoint/processo real de integração com o ERP para os
+  manter atualizados (RF-ENT-03/04); `POST /api/artigos` já existe e
+  aceita upsert em lote, só falta quem o chame a sério.
 
-### 8.1 Rework de schema/API pendente por causa do v0.4 (ADR-015)
+### 8.1 Rework de schema/API do v0.4 — feito (ADR-016), com simplificações conhecidas
 
-Trabalho estrutural identificado mas **não feito ainda** — é uma
-alteração grande sobre schema já testado, por isso fica planeado aqui
-antes de se mexer em código:
+O trabalho estrutural planeado nesta secção **foi feito** — ver
+ADR-016 para o detalhe do que foi implementado e testado. O que ficou
+deliberadamente simplificado (Cenário B, distribuição por camada, Cesto
+como instância) está listado nos itens novos acima, não repetido aqui.
+Ainda por resolver:
 
-- Tabela **Ordem de Preparação** (agrupa PS por cliente/data/morada) —
-  nova, não existe. `OrdensSeparacao` hoje aproxima-se do nível PS, sem
-  o agrupamento acima.
-- Tabela **Plataforma** (gerada pela tipificação, tipo P4/P2/P1) — nova.
-- **Cesto como instância** (1 cesto = 1 ordem, dentro de 1 plataforma)
-  — hoje `CESTOS` é só a tabela de referência de tamanhos; falta o
-  nível de instância.
-- **`TiposPlataforma`**: remover `P0` (é fluxo, não tipo de
-  plataforma) e corrigir dimensões/capacidades para as da secção 4.7
-  (P1 384L, P2 192L, P4 96L, margem 20% já aplicada).
-- Generalizar **`MISSAO`** para os 6 centros de trabalho do v0.4
-  (picking, packing, transporte, abastecimento, reposição, P0) — hoje
-  só o motor de picking existe.
-- Estados de missão (A.13): `criada → atribuída → em execução →
-  (pausada ↔ em execução) → concluída | fechada incompleta`, com
-  motivo tipificado na pausa — falta modelar a máquina de estados a
-  sério (hoje é só Pendente/EmProgresso/Concluida).
-- Nomes de tabela exatos para as entidades novas — o cliente só deu
-  nomes fixos para as tabelas já existentes (ADR-011); perguntar antes
-  de finalizar, ou propor e corrigir depois.
+- **Nomes de tabela exatos para as entidades novas** (`OrdensPreparacao`,
+  `Plataformas`, e a futura tabela de Cesto-instância quando o Cenário
+  B for construído) — o cliente só deu nomes fixos para as tabelas já
+  existentes (ADR-011); usei nomes descritivos (ADR-015), a corrigir se
+  o cliente pedir códigos específicos.
+- **Generalizar `MISSAO` para os outros 5 centros de trabalho**
+  (packing, transporte, abastecimento, reposição, P0) — a coluna
+  `CentroTrabalho` já existe no schema, mas só o motor de picking gera
+  missões; os outros centros ainda não têm lógica nenhuma.
 
 ### 8.2 Decisões que o próprio documento v0.4 deixa em aberto
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Orchestrator.Api.Data;
 using Orchestrator.Api.Data.Entities;
+using Orchestrator.Api.Tipificacao;
 
 namespace Orchestrator.Api.OrdensSeparacao;
 
@@ -11,8 +12,9 @@ public static class OrdensSeparacaoEndpoints
         var group = app.MapGroup("/api/ordens-separacao").WithTags("OrdensSeparacao");
 
         // Independente da origem (PHC ou OrdersHub — ADR-008), é aqui que a
-        // informação entra no WOPA. O trabalho do controller (criar missões)
-        // começa a partir do que ficar guardado aqui.
+        // informação entra no WOPA. O trabalho do controller (agrupar PS em
+        // Ordens de Preparação, RF-CTL-02) começa a partir do que ficar
+        // guardado aqui.
         group.MapPost("/", async (NovaOrdemSeparacaoRequest pedido, WopaDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(pedido.NumeroDocumento))
@@ -44,6 +46,10 @@ public static class OrdensSeparacaoEndpoints
                 Id = Guid.NewGuid().ToString("n"),
                 NumeroDocumento = pedido.NumeroDocumento,
                 Origem = pedido.Origem,
+                Cliente = pedido.Cliente,
+                DataEntrega = pedido.DataEntrega,
+                MoradaEntrega = pedido.MoradaEntrega,
+                Canal = pedido.Canal,
                 Linhas = pedido.Linhas.Select(l => new OrdemSeparacaoLinhaEntity
                 {
                     Id = Guid.NewGuid().ToString("n"),
@@ -58,35 +64,62 @@ public static class OrdensSeparacaoEndpoints
             db.OrdensSeparacao.Add(entidade);
             await db.SaveChangesAsync();
 
-            var resposta = await ParaDto(db, entidade.Id);
+            var resposta = await ParaDto(db, entidade.Id, comCubicagem: false);
             return Results.Created($"/api/ordens-separacao/{entidade.Id}", resposta);
         })
         .WithName("ReceberOrdemSeparacao");
 
-        group.MapGet("/", async (WopaDbContext db) =>
+        // RF-CTL-01: PS abertos (ainda não agrupados numa Ordem de
+        // Preparação) com cubicagem e tipificação indicativa.
+        group.MapGet("/", async (bool? abertas, WopaDbContext db, CubicagemService cubicagem) =>
         {
-            var ordens = await db.OrdensSeparacao
+            var query = db.OrdensSeparacao
                 .Include(o => o.Linhas).ThenInclude(l => l.Alveolo)
-                .OrderByDescending(o => o.RecebidaEm)
-                .ToListAsync();
-            return ordens.Select(ParaDto);
+                .AsQueryable();
+
+            if (abertas == true)
+                query = query.Where(o => o.OrdemPreparacaoId == null);
+
+            var ordens = await query.OrderByDescending(o => o.RecebidaEm).ToListAsync();
+
+            var resultado = new List<OrdemSeparacao>();
+            foreach (var ordem in ordens)
+            {
+                var dto = ParaDto(ordem);
+                dto.Cubicagem = await CalcularCubicagemIndicativaAsync(cubicagem, ordem.Linhas);
+                resultado.Add(dto);
+            }
+            return resultado;
         })
         .WithName("ListarOrdensSeparacao");
 
-        group.MapGet("/{id}", async (string id, WopaDbContext db) =>
+        group.MapGet("/{id}", async (string id, WopaDbContext db, CubicagemService cubicagem) =>
         {
-            var dto = await ParaDto(db, id);
+            var dto = await ParaDto(db, id, comCubicagem: true, cubicagem);
             return dto is not null ? Results.Ok(dto) : Results.NotFound();
         })
         .WithName("ObterOrdemSeparacao");
     }
 
-    private static async Task<OrdemSeparacao?> ParaDto(WopaDbContext db, string id)
+    private static async Task<CubicagemIndicativa> CalcularCubicagemIndicativaAsync(
+        CubicagemService cubicagem, IReadOnlyList<OrdemSeparacaoLinhaEntity> linhas)
+    {
+        var resultado = await cubicagem.CubicarOrdemAsync(linhas);
+        var tipo = await cubicagem.TipificarAsync(resultado.VolumeCm3);
+        return new CubicagemIndicativa(resultado.VolumeLitros, resultado.PesoKg, resultado.NRefs, resultado.NLinhasNaoCubicaveis, tipo.Notacao);
+    }
+
+    private static async Task<OrdemSeparacao?> ParaDto(WopaDbContext db, string id, bool comCubicagem, CubicagemService? cubicagem = null)
     {
         var ordem = await db.OrdensSeparacao
             .Include(o => o.Linhas).ThenInclude(l => l.Alveolo)
             .SingleOrDefaultAsync(o => o.Id == id);
-        return ordem is null ? null : ParaDto(ordem);
+        if (ordem is null) return null;
+
+        var dto = ParaDto(ordem);
+        if (comCubicagem && cubicagem is not null)
+            dto.Cubicagem = await CalcularCubicagemIndicativaAsync(cubicagem, ordem.Linhas);
+        return dto;
     }
 
     private static OrdemSeparacao ParaDto(OrdemSeparacaoEntity ordem) => new()
@@ -96,6 +129,11 @@ public static class OrdensSeparacaoEndpoints
         Origem = ordem.Origem,
         RecebidaEm = ordem.RecebidaEm,
         Processada = ordem.Processada,
+        Cliente = ordem.Cliente,
+        DataEntrega = ordem.DataEntrega,
+        MoradaEntrega = ordem.MoradaEntrega,
+        Canal = ordem.Canal,
+        OrdemPreparacaoId = ordem.OrdemPreparacaoId,
         Linhas = ordem.Linhas
             .Select(l => new OrdemSeparacaoLinha(l.Sku, l.Quantidade, l.Alveolo?.Codigo))
             .ToList(),
