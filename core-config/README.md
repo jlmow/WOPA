@@ -1,0 +1,1 @@
+# WOPA core-config
