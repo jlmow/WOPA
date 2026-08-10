@@ -22,11 +22,15 @@
 
 .PARAMETER SourceRoot
     Onde copiaste o repositório (a pasta que tem orchestrator/, pda/,
-    controller/). Por omissão C:\wopa\install.
+    controller/) — é só material de build, fica em C:. Por omissão
+    C:\wopa\install.
 
 .PARAMETER InstallRoot
-    Onde o WOPA fica instalado (binários publicados, sites do IIS).
-    Por omissão C:\wopa.
+    Onde os SITES do WOPA ficam instalados (orchestrator publicado,
+    pda/controller compilados — o que o IIS serve). Por omissão
+    E:\wopa, o disco reservado no servidor para a API — nada dos
+    pré-requisitos (IIS, Hosting Bundle, SDKs) vai para aqui, só o
+    conteúdo dos três sites.
 
 .PARAMETER SqlServer
     Instância do SQL Server, ex. "WOPASRV\wopa" ou "172.16.4.15\wopa".
@@ -65,7 +69,7 @@
 [CmdletBinding()]
 param(
     [string]$SourceRoot = "C:\wopa\install",
-    [string]$InstallRoot = "C:\wopa",
+    [string]$InstallRoot = "E:\wopa",
     [Parameter(Mandatory = $true)]
     [string]$SqlServer,
     [string]$SqlUser = "sa",
@@ -114,8 +118,17 @@ if (-not $SqlPassword) {
         [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
 }
 
+# InstallRoot é onde os SITES ficam (o que o IIS serve) -- por pedido
+# explícito, isto vai para o disco reservado à API (E:\ por omissão),
+# não para C:. Falha cedo e com uma mensagem clara se a drive não
+# existir, em vez de deixar o New-Item criar uma pasta nalgum sítio
+# inesperado.
+$installDrive = [System.IO.Path]::GetPathRoot($InstallRoot)
+if (-not (Test-Path $installDrive)) {
+    throw "A drive '$installDrive' (de -InstallRoot '$InstallRoot') não existe neste servidor. Confirma a letra da drive reservada à API, ou passa -InstallRoot com o caminho certo."
+}
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
-Write-Ok "SourceRoot=$SourceRoot InstallRoot=$InstallRoot SqlServer=$SqlServer HostName=$HostName"
+Write-Ok "SourceRoot=$SourceRoot (build) InstallRoot=$InstallRoot (sites) SqlServer=$SqlServer HostName=$HostName"
 
 # -------------------------------------------------------------------
 # 1. Pré-requisitos

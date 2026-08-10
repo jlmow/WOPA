@@ -8,6 +8,12 @@ Confirmei aqui que `dotnet publish` já gera o `web.config` correto para
 IIS automaticamente (hosting in-process, sem precisar de tocar no
 projeto) — não há nada a ajustar no código para isto funcionar.
 
+**Discos:** os três sites do WOPA (`orchestrator`, `pda`, `controller`)
+vivem em `E:\wopa\...` — o disco reservado à API neste servidor.
+Ferramentas e pré-requisitos (SDKs, Hosting Bundle, o clone/cópia do
+repositório para build) ficam em `C:\` como habitual. Todos os
+caminhos deste guia e do `install-wopa.ps1` já refletem isto.
+
 ## 0. Caminho automático: `deploy/install-wopa.ps1`
 
 Se preferires não seguir os passos manuais abaixo, há um script
@@ -43,10 +49,13 @@ que o script faz (e para quando quiseres fazer só uma parte à mão).
 
 ## 2. Publicar o orchestrator
 
-A partir de `orchestrator/src/Orchestrator.Api`:
+A partir de `orchestrator/src/Orchestrator.Api`. **Publica para o disco
+reservado à API (`E:\` neste servidor) — os sites do WOPA vivem em
+`E:\`, só as ferramentas/pré-requisitos (SDKs, Hosting Bundle) ficam
+em `C:\`:**
 
 ```powershell
-dotnet publish -c Release -o C:\inetpub\wopa\orchestrator
+dotnet publish -c Release -o E:\wopa\orchestrator
 ```
 
 Isto gera os binários + `web.config` prontos para IIS na pasta de
@@ -90,7 +99,7 @@ em redes internas sem certificado válido).
    - Start mode: `AlwaysRunning` (evita o "cold start" na primeira
      chamada depois do IIS reciclar o pool).
 2. **Sites** → **Add Website**:
-   - Physical path: `C:\inetpub\wopa\orchestrator`
+   - Physical path: `E:\wopa\orchestrator`
    - Application pool: `WOPA-Orchestrator`
    - Binding: porta interna à tua escolha (ex. `8080`), ou um binding
      dedicado se o orchestrator vai ficar num domínio/subdomínio
@@ -164,9 +173,10 @@ npm run build     # gera dist/
 ```
 
 Copia o conteúdo de `dist/` para uma pasta servida por um site IIS
-próprio (ex. `C:\inetpub\wopa\pda`), com **Physical Path Credentials**
-normais (site estático, não precisa de application pool "No Managed
-Code" — pode até ficar no mesmo pool default do IIS).
+próprio (ex. `E:\wopa\pda` — disco reservado à API, mesma regra da
+secção 2), com **Physical Path Credentials** normais (site estático,
+não precisa de application pool "No Managed Code" — pode até ficar no
+mesmo pool default do IIS).
 
 Antes do build, aponta `VITE_ORCHESTRATOR_URL` para o endereço real do
 orchestrator neste servidor (não `localhost:5080`, que só funciona em
