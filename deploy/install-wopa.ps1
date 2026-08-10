@@ -1,4 +1,3 @@
-#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Instala o WOPA (orchestrator + pda + controller) num servidor Windows
@@ -19,6 +18,19 @@
     onde foi escrito não tem acesso a um. Corre-o primeiro numa
     máquina de teste, ou lê-o com atenção antes de correr no servidor a
     sério — e diz-me qualquer erro que apareça, para eu corrigir.
+
+    COMO CORRER (importante): abre o PowerShell como Administrador
+    (Menu Iniciar → escreve "PowerShell" → botão direito → "Executar
+    como Administrador") e corre o script a partir daí com `.\`. NÃO
+    uses "Run with PowerShell" no menu de contexto do Explorer nem
+    duplo-clique — essa janela fecha-se sozinha assim que o script
+    acaba (ou falha), sem dar tempo a ler nada. Se copiaste o
+    ficheiro de outra máquina (rede, USB, etc.), o Windows marca-o
+    como "bloqueado" e o PowerShell recusa-se a correr — corre
+    primeiro `Unblock-File .\install-wopa.ps1`. Se mesmo assim vires
+    um erro sobre "execution policy", corre
+    `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` nessa
+    mesma janela antes de tentares outra vez (só afeta esta sessão).
 
 .PARAMETER SourceRoot
     Onde copiaste o repositório (a pasta que tem orchestrator/, pda/,
@@ -83,6 +95,29 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Verificação manual (em vez de "#Requires -RunAsAdministrator") --
+# assim, se não estiveres elevado, o script consegue mostrar uma
+# mensagem clara e esperar por ENTER antes de fechar, em vez de a
+# janela simplesmente desaparecer sem dares tempo a ler o erro.
+$currentUser = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host ""
+    Write-Host "Este script tem de correr como Administrador." -ForegroundColor Red
+    Write-Host "Fecha esta janela, abre o PowerShell como Administrador" -ForegroundColor Yellow
+    Write-Host "(Menu Iniciar -> 'PowerShell' -> botao direito -> 'Executar como Administrador')" -ForegroundColor Yellow
+    Write-Host "e corre o script outra vez a partir dai." -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Prima ENTER para fechar"
+    exit 1
+}
+
+# Tudo a partir daqui corre dentro de um try/catch/finally: se algo
+# falhar a meio (mesmo lançado por um cmdlet nativo), a janela mostra
+# o erro e espera por ENTER antes de fechar -- para quem correr isto
+# com duplo-clique / "Run with PowerShell" (que fecha a janela sozinha
+# assim que o processo termina) conseguir mesmo ler o que aconteceu.
+try {
 
 function Write-Step($msg) {
     Write-Host ""
@@ -468,3 +503,17 @@ Write-Host "  pda:           http://${HostName}:${PdaPort}"
 Write-Host "  controller:    http://${HostName}:${ControllerPort}"
 Write-Host ""
 Write-Host "Login de exemplo (dados de seed): operador 42, PIN 1234." -ForegroundColor DarkGray
+
+}
+catch {
+    Write-Host ""
+    Write-Host "=== ERRO -- a instalação parou ===" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Detalhe completo:" -ForegroundColor DarkGray
+    Write-Host ($_ | Out-String) -ForegroundColor DarkGray
+}
+finally {
+    Write-Host ""
+    Read-Host "Prima ENTER para fechar"
+}
