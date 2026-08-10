@@ -617,21 +617,23 @@ WHEN NOT MATCHED THEN
 GO
 
 -- Dimensões confirmadas pelo cliente: P0 (palete completa) 1,30 m de
--- altura, sem cestos. P1/P2/P4 (plataforma com cestos) 0,40 m de
--- altura — corrige o valor de 0,50 m assumido no documento v0.4.
--- Capacidades úteis recalculadas com a mesma fórmula da secção 4.7
--- (bruto x 0,80 de margem) para a altura real de 40 cm:
---   P1 120x80x40 = 384 L bruto -> 307 L útil
---   P2  60x80x40 = 192 L bruto -> 154 L útil
---   P4  40x60x40 =  96 L bruto ->  77 L útil
--- P0 não tem capacidade útil (não participa na tipificação por
--- volume — é extraído antes, por múltiplos de palete completa, A.3).
+-- altura, sem cestos. P1/P2/P4 (cesto físico) 0,40 m de altura própria
+-- — mas ver ADR-018: a query real de tipificação do cliente (a que
+-- gera as Ordens de Preparação) usa 96000/192000/384000 cm³ como
+-- limiares, que só batem certo com uma altura ÚTIL DE CARGA de 50 cm
+-- (limite de alcance do operador sobre o cesto — distinto da altura
+-- física do cesto em si). Por isso CapacidadeUtilLitros mantém-se nos
+-- valores validados pela query real (384/192/96 L); AlturaMm regista
+-- a altura física do cesto (40 cm) tal como o cliente a deu, sem
+-- influenciar a capacidade — são duas medidas diferentes, não a mesma
+-- corrigida duas vezes. Ver ARCHITECTURE.md ADR-018 para a
+-- reconciliação e o que fica por confirmar.
 MERGE dbo.TiposPlataforma AS alvo
 USING (VALUES
     (N'P0', N'Palete completa (fluxo direto)',   1200, 800, 1300, 0,   0),
-    (N'P1', N'Plataforma + 1 cesto (120x80cm)',  1200, 800,  400, 1, 307),
-    (N'P2', N'Plataforma + 2 cestos (60x80cm)',   600, 800,  400, 2, 154),
-    (N'P4', N'Plataforma + 4 cestos (40x60cm)',   400, 600,  400, 4,  77)
+    (N'P1', N'Plataforma + 1 cesto (120x80cm)',  1200, 800,  400, 1, 384),
+    (N'P2', N'Plataforma + 2 cestos (60x80cm)',   600, 800,  400, 2, 192),
+    (N'P4', N'Plataforma + 4 cestos (40x60cm)',   400, 600,  400, 4,  96)
 ) AS novo (Codigo, Descricao, ComprimentoMm, LarguraMm, AlturaMm, CestosPorPlataforma, CapacidadeUtilLitros)
 ON alvo.Codigo = novo.Codigo
 WHEN NOT MATCHED THEN

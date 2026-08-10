@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Estado** | Em desenvolvimento — validado com PoC funcional |
-| **Última atualização** | Ordens de Preparação passam a chegar já compostas de outro software (o WOPA só recebe/guarda); P0 reinstaurado com dimensões reais; `schema.sql` reescrito limpo (sem BD instalada ainda) — ver ADR-017 |
+| **Última atualização** | Capacidades P1/P2/P4 (384/192/96 L) validadas contra 18 meses de dados reais e contra a query de produção do cliente — ver ADR-018 |
 | **Âmbito** | Todos os módulos do projeto WOPA (Warehouse Order & Picking Automation) |
 | **Fonte de negócio autoritativa** | `Requisitos Funcionais, Desenho da Solução e Arquitectura — WOPA v0.4` (agosto 2026), fornecido pelo cliente. Onde este documento e as decisões anteriores registadas aqui entrarem em conflito, **o v0.4 vence** — exceto nos dois pontos explicitamente revistos no ADR-015 (stack do PDA e fronteira de escrita) |
 
@@ -339,23 +339,27 @@ conflito — ver secção 8 para o trabalho de schema ainda por fazer.
   ordem por cesto. Podem ser de clientes/moradas/datas diferentes; a
   segregação é garantida pelo cesto, não pela plataforma.
 
-**Dimensões e capacidades** — a altura real dos cestos (P1/P2/P4) é
-0,40 m, corrigida pelo cliente (o v0.4 assumia 0,50 m); capacidades
-recalculadas com a mesma fórmula do documento (margem de 20%). **P0
-existe** como tipo de plataforma real — palete completa, sem cestos,
-altura 1,30 m — não é um "fluxo sem tipo" como uma leitura inicial do
-v0.4 sugeria (ver ADR-017):
+**Dimensões e capacidades** — duas medidas distintas, não confundir
+(ver ADR-018): a **altura física do cesto** (P1/P2/P4) é 0,40 m,
+confirmada pelo cliente; a **altura útil de carga** para efeitos de
+tipificação por volume é 0,50 m (o "limite de alcance do operador
+sobre o cesto" do v0.4 — o operador enche acima do rebordo do cesto,
+dentro do alcance) e é essa que a query real de tipificação do
+cliente usa (limiares 96000/192000/384000 cm³, confirmados contra
+dados reais). **P0 existe** como tipo de plataforma real — palete
+completa, sem cestos, altura 1,30 m — não é um "fluxo sem tipo" como
+uma leitura inicial do v0.4 sugeria (ver ADR-017):
 
-| Tipo | C×L×A (cm) | Bruto (L) | Útil −20% (L) | Cestos por plataforma |
-|---|---|---|---|---|
-| P0 | 120×80×130 | — | — (fluxo direto, sem tipificação por volume) | 0 |
-| P1 | 120×80×40 | 384 | 307 | 1 (cesto = plataforma) |
-| P2 | 60×80×40 | 192 | 154 | 2 |
-| P4 | 40×60×40 | 96 | 77 | 4 |
+| Tipo | C×L (cm) | Altura física (cm) | Altura útil de carga (cm) | Capacidade útil (L) | Cestos por plataforma |
+|---|---|---|---|---|---|
+| P0 | 120×80 | 130 | — | — (fluxo direto, sem tipificação por volume) | 0 |
+| P1 | 120×80 | 40 | 50 | 384 | 1 (cesto = plataforma) |
+| P2 | 60×80 | 40 | 50 | 192 | 2 |
+| P4 | 40×60 | 40 | 50 | 96 | 4 |
 
 Regra de tipificação (A.4): o tipo é o **menor cesto** onde o volume
-de picking da ordem cabe — P4 até 77 L, P2 até 154 L, P1 até 307 L.
-Acima disso, multi-plataforma `P1(n)`, `n = CEILING(vol / 307L)`,
+de picking da ordem cabe — P4 até 96 L, P2 até 192 L, P1 até 384 L.
+Acima disso, multi-plataforma `P1(n)`, `n = CEILING(vol / 384L)`,
 sempre com plataformas P1 (mesmo quando o resto caberia num cesto
 menor — simplicidade operacional). Cubicagem detalhada em A.1/A.2:
 caixas completas pelo volume da caixa, avulsas por fração proporcional
@@ -1140,6 +1144,70 @@ começar pela Fase 1 e crescer para a Fase 2.
   segunda execução, e o circuito completo (receber Ordem de Preparação
   com PS aninhados → tipificar → despachar) voltou a ser testado com
   sucesso depois da reescrita.
+
+### ADR-018 — Capacidade útil (P1/P2/P4) volta a 384/192/96 L, validada com dados reais; altura física do cesto fica só descritiva
+
+- **Contexto:** o cliente enviou a query real que gera as Ordens de
+  Preparação hoje em produção (agrupamento por `bostamp`/`ordem`), com
+  os limiares de tipificação **hardcoded em 96000/192000/384000 cm³**
+  — exatamente os valores originais do v0.4 (baseados em altura de
+  50 cm), não os 77000/154000/307000 que o ADR-017 tinha calculado a
+  partir da altura física de 40 cm que o cliente deu para o cesto P1.
+  Isto era uma contradição direta a resolver, não a ignorar.
+- **Validação com dados reais:** o cliente enviou também
+  `estudo_cl_18_meses_anonimizado.xlsx` (as mesmas 18 meses de dados
+  do estudo do v0.4 secção 7) — 323.639 linhas de PS, 49.486 PS
+  distintos. Recalculei a cubicagem linha a linha (Anexo A.1) e
+  comparei a tipificação resultante sob os dois critérios de altura:
+
+  | | Altura 50 cm (query real) | Altura 40 cm (ADR-017) |
+  |---|---|---|
+  | P4 | 33.877 PS | 31.922 PS |
+  | P2 | 4.807 PS | 5.370 PS |
+  | P1 | 3.871 PS | 4.057 PS |
+  | P1(n) | 6.931 PS | 8.137 PS |
+  | **Total de plataformas geradas** | **75.973** | **84.059** (+10,6%) |
+
+  **16,9% dos PS** (8.346 de 49.486) mudam de tipo consoante o
+  critério — não é uma diferença marginal.
+- **Decisão:** `CapacidadeUtilLitros` em `TiposPlataforma` volta aos
+  valores originais **P1 384 L / P2 192 L / P4 96 L**, validados pela
+  query real em produção. `AlturaMm` mantém-se em 40 cm para P1/P2/P4
+  — **são duas medidas diferentes, não a mesma corrigida duas vezes**:
+  a altura física do cesto (40 cm, o que o cliente confirmou) é uma
+  coisa; a altura útil de carga para tipificação (50 cm, "limite de
+  alcance do operador sobre o cesto" — o operador enche o cesto acima
+  do rebordo, dentro do alcance) é outra, e é essa que governa o
+  volume de picking. `AlturaMm` fica como campo descritivo (não entra
+  no cálculo de `CapacidadeUtilLitros`).
+- **Ainda por confirmar com o cliente:** esta reconciliação
+  (altura física vs. altura útil de carga) é a minha leitura para
+  tornar os dois factos coerentes, não algo que o cliente tenha dito
+  explicitamente com essas palavras — sinalizado aqui para
+  confirmação, tal como o próprio ADR-017 já tinha pedido.
+- **Porquê not manter os dois campos redundantes:** ponderei adicionar
+  uma segunda coluna (`AlturaUtilCargaMm`) em vez de reintroduzir o
+  valor antigo só em `CapacidadeUtilLitros` — decidi não o fazer nesta
+  fase porque a fórmula de capacidade (secção 4.7) já deriva de uma
+  única altura; duplicar o conceito antes de ter confirmação do
+  cliente arrisca mais confusão do que resolve. `CapacidadeUtilLitros`
+  guarda o número validado; `AlturaMm` guarda a dimensão física dada —
+  suficiente para a PoC.
+- **Descoberta lateral relevante (do mesmo ficheiro):** a folha
+  `Rotas` (49.130 linhas: `data_criacao`, `rota`, `PSstamp`) mostra
+  como os PS são hoje agrupados na prática — 23.714 rotas distintas,
+  57% delas com mais de um PS (até 26 num caso). Das rotas com vários
+  PS, 76% são de um único cliente (Cenário A — consistente com ordens
+  ≥P1) e 24% misturam clientes diferentes (Cenário B — plataformas
+  partilhadas). É a primeira evidência real de como a composição de
+  Ordens de Preparação (ADR-017 — feita fora do WOPA) provavelmente
+  funciona: por rota de expedição, não só por cliente/data/morada.
+  Fica como contexto para quando o Cenário B for implementado
+  (secção 8) — não mudei nada com base nisto, só registo.
+- **Nota de segurança:** os dados usados nesta validação já vinham
+  anonimizados pelo cliente (`cliente` como `CLI####`, `ref` como
+  `SKU#####`) — não há códigos reais de artigo nem nomes de cliente
+  neste documento.
 
 ---
 
