@@ -1,6 +1,25 @@
+/* Auto-hospedadas (ADR-026) -- mesma razão do pda: rede interna sem
+   internet garantida. Ver comentário equivalente em pda/src/index.css. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/inter-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/fraunces-variable.woff2") format("woff2");
+}
+
 :root {
   /* Paleta mantida — creme/bege quente, texto quase preto, dourado de
-     destaque, serif nos títulos. O que muda é a linguagem visual:
+     destaque. Tipografia modernizada (ADR-026): Inter no texto/UI,
+     Fraunces nos títulos em vez do Georgia anterior. Linguagem visual:
      cartões arredondados e elevados, pills de estado com fundo suave,
      em vez de painéis/tabelas de contorno reto e tags de contorno fino. */
   --text: #1a1a1a;
@@ -17,8 +36,8 @@
   --em-progresso: #b9962e;
   --concluida: #0a8a3a;
 
-  --heading-font: Georgia, "Iowan Old Style", "Times New Roman", serif;
-  --sans-font: system-ui, "Segoe UI", Roboto, sans-serif;
+  --heading-font: "Fraunces", Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --sans-font: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
 
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -361,4 +380,30 @@ body {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* Bloco de Tipificar (OrdensPreparacaoPage) -- explica o que o botão faz e
+   o que o campo de altura influencia, porque nenhum dos dois é óbvio só
+   pelo nome (ADR-025). */
+.tipificar-bloco {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 16px 18px;
+  margin: 14px 0;
+}
+
+.tipificar-bloco__explicacao {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tipificar-bloco .form-row {
+  margin: 0;
+}
+
+.tipificar-bloco__aviso {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--gold);
 }

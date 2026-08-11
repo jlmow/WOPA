@@ -1484,6 +1484,47 @@ começar pela Fase 1 e crescer para a Fase 2.
   isso agora seria inventar dados que não existem. Fica para quando o
   login do `controller` for feito.
 
+### ADR-025 — Bug real corrigido: pill de estado cortada no pda; Tipificar/altura explicados no ecrã
+
+- **Bug de layout (visto ao vivo no telemóvel do cliente):** a pill de
+  estado ("PENDENTE") no `TaskList` do `pda` aparecia cortada/sem
+  texto visível. Causa: `grid-template-columns: auto 1fr auto` — sem
+  `min-width: 0` na coluna da descrição (1fr), essa coluna recusa-se a
+  encolher abaixo do seu conteúdo mínimo e espreme a coluna da pill.
+  Corrigido: `minmax(0, 1fr)` na descrição e `minmax(78px, auto)`
+  garantido para a coluna de estado, mais `white-space: nowrap` na
+  própria pill. Mesma proteção aplicada preventivamente a
+  `.option-card__tag` (mesmo padrão de pill, ainda sem o bug
+  manifestado).
+- **"Não entendo o Tipificar/altura da palete final":** confirmado com
+  o cliente que a lógica fica como está (Anexo A.4/A.5/A.8) — só
+  faltava explicar no próprio ecrã. `OrdensPreparacaoPage` ganhou um
+  parágrafo antes do botão a dizer o que `Tipificar` calcula e produz,
+  e um aviso depois do campo de altura a dizer que só importa quando a
+  ordem gera mais que uma plataforma, e que a regra do limiar (140 cm)
+  é provisória — ver ADR-016/017, "DECISÃO PENDENTE" do próprio
+  documento v0.4, secção 8.
+
+### ADR-026 — Tipografia modernizada: Inter + Fraunces, auto-hospedadas
+
+- **Contexto:** pedido do cliente para modernizar a fonte, com
+  pesquisa do que está em uso em SaaS/dashboards atuais.
+- **Decisão:** `Inter` no texto/UI (o sans-serif mais instalado da
+  web em 2026, desenhado para ecrã, base de facto de dashboards/SaaS)
+  e `Fraunces` nos títulos (serifada com mais carácter que o Georgia
+  anterior, mantém o tom editorial da marca — combinação "sans para
+  UI + serif de destaque nos títulos" é o padrão mais recomendado
+  atualmente). Cores mantidas.
+- **Auto-hospedadas, não CDN da Google Fonts:** o `pda`/`controller`
+  correm numa rede interna da empresa sem internet garantida
+  (ADR-023) — um CDN externo faria a fonte falhar ou atrasar o
+  primeiro carregamento fora dessa rede. Ficheiros `.woff2` variáveis
+  (um por família cobre todos os pesos usados) em `public/fonts/` de
+  cada projeto, só o subset "latin" (cobre toda a acentuação PT-PT,
+  dentro de U+00FF) — não os subsets cirílico/grego/vietnamita que a
+  Google serve por omissão. `<link rel="preload">` no `index.html`
+  de cada app para evitar flash de texto sem estilo.
+
 ---
 
 ## 8. Em aberto

@@ -1,8 +1,31 @@
+/* Auto-hospedadas (ADR-026) -- rede interna sem internet garantida, por
+   isso nada de CDN da Google Fonts. Só o subset "latin" (cobre PT-PT:
+   ç/ã/õ/á/é/í/ó/ú, tudo dentro de U+00FF) -- ficheiros variáveis, um só
+   por família cobre todos os pesos usados. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/inter-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/fraunces-variable.woff2") format("woff2");
+}
+
 :root {
   /* Paleta mantida (ADR original) — creme/bege quente, texto quase preto,
-     dourado de destaque. O que muda aqui é só a linguagem visual dos
-     componentes: cantos arredondados, cartões elevados, pills de estado,
-     em vez do estilo anterior "sem cantos arredondados". */
+     dourado de destaque. Tipografia modernizada (ADR-026): Inter no
+     texto/UI (o sans mais usado em SaaS/dashboards atualmente) e Fraunces
+     nos títulos (serifada com mais carácter que o Georgia anterior,
+     mantém o tom editorial). Componentes: cantos arredondados, cartões
+     elevados, pills de estado, em vez do estilo anterior "sem cantos
+     arredondados". */
   --text: #1a1a1a;
   --text-muted: #6b6b63;
   --bg: #faf8f4;
@@ -18,8 +41,8 @@
   --em-progresso: #b9962e;
   --concluida: #0a8a3a;
 
-  --heading-font: Georgia, "Iowan Old Style", "Times New Roman", serif;
-  --sans-font: system-ui, "Segoe UI", Roboto, sans-serif;
+  --heading-font: "Fraunces", Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --sans-font: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
 
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -79,7 +102,11 @@ body {
 .task-card {
   width: 100%;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* minmax(0, 1fr): sem isto, a coluna da descrição recusa-se a encolher
+     abaixo do seu min-content e espreme a coluna da pill de estado, que
+     fica cortada (visto ao vivo no telemóvel). minmax(78px, auto): dá à
+     pill espaço garantido para "PENDENTE" mesmo em ecrãs estreitos. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(78px, auto);
   gap: 2px 10px;
   text-align: left;
   padding: 16px 16px 16px 14px;
@@ -115,6 +142,7 @@ body {
   grid-column: 2;
   grid-row: 1 / 3;
   align-self: center;
+  min-width: 0;
   font-family: var(--heading-font);
   font-size: 18px;
 }

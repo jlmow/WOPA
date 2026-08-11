@@ -110,25 +110,37 @@ export function OrdensPreparacaoPage() {
           </p>
 
           {ordem.estado === "Aberta" && (
-            <div className="form-row">
-              <label>
-                Altura da palete final (cm)
-                <input
-                  type="number"
-                  placeholder="ex. 150"
-                  value={alturaPorOrdem[ordem.id] ?? ""}
-                  onChange={(e) => setAlturaPorOrdem((prev) => ({ ...prev, [ordem.id]: e.target.value }))}
-                  data-testid={`altura-${ordem.id}`}
-                />
-              </label>
-              <button
-                className="button button--primary"
-                onClick={() => tipificar(ordem.id)}
-                disabled={aProcessar === ordem.id}
-                data-testid={`tipificar-${ordem.id}`}
-              >
-                {aProcessar === ordem.id ? "A tipificar…" : "Tipificar"}
-              </button>
+            <div className="tipificar-bloco">
+              <p className="tipificar-bloco__explicacao">
+                <strong>Tipificar</strong> calcula o volume e o peso desta ordem a partir das linhas dos PS,
+                escolhe a plataforma mais pequena onde cabe (P4, P2 ou P1) — ou várias plataformas P1 se
+                ultrapassar a maior capacidade — e cria essas plataformas, prontas a despachar para picking.
+              </p>
+              <div className="form-row">
+                <label>
+                  Altura da palete final (cm)
+                  <input
+                    type="number"
+                    placeholder="ex. 150"
+                    value={alturaPorOrdem[ordem.id] ?? ""}
+                    onChange={(e) => setAlturaPorOrdem((prev) => ({ ...prev, [ordem.id]: e.target.value }))}
+                    data-testid={`altura-${ordem.id}`}
+                  />
+                </label>
+                <button
+                  className="button button--primary"
+                  onClick={() => tipificar(ordem.id)}
+                  disabled={aProcessar === ordem.id}
+                  data-testid={`tipificar-${ordem.id}`}
+                >
+                  {aProcessar === ordem.id ? "A tipificar…" : "Tipificar"}
+                </button>
+              </div>
+              <p className="tipificar-bloco__aviso">
+                Opcional — só importa quando esta ordem gera <strong>mais que uma plataforma</strong>: define
+                quantas plataformas empilhar antes de repetir o padrão pesado/leve. Regra ainda provisória
+                (limiar 140 cm), por confirmar com o cliente — deixa em branco se não souberes.
+              </p>
             </div>
           )}
 
