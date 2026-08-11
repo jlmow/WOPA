@@ -12,6 +12,7 @@ import { MontarPlataforma } from "./components/MontarPlataforma";
 import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
 import { useServerConnection } from "../../shared/useServerConnection";
+import { gerarOperacaoId } from "../../shared/id";
 
 // "picking": depois de um scan válido, passo obrigatório de escolher
 // alvéolo + quantidade (ADR-022) antes de a leitura seguinte ser possível.
@@ -58,7 +59,7 @@ export function PickingModule() {
   ): Promise<{ ok: true } | { ok: false; erro: string }> {
     if (!missao) return { ok: false, erro: "Sem missão carregada." };
     try {
-      await pickingApi.montar(missao.id, matriculaPalete, matriculasCestos, crypto.randomUUID());
+      await pickingApi.montar(missao.id, matriculaPalete, matriculasCestos, gerarOperacaoId());
       const missaoConfirmada: MissionSummary = {
         ...missao,
         montagem: missao.montagem ? { ...missao.montagem, confirmada: true } : null,
@@ -156,7 +157,7 @@ export function PickingModule() {
       return { ok: false, erro: "Código de barras não corresponde ao artigo esperado." };
     }
 
-    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "scan", taskId: task.id, barcode, criadoEm: Date.now() });
+    await db.outbox.add({ opId: gerarOperacaoId(), tipo: "scan", taskId: task.id, barcode, criadoEm: Date.now() });
     void flushOutbox(aplicarSincronizado);
     setVista("picking");
     return { ok: true };
@@ -177,9 +178,9 @@ export function PickingModule() {
 
     await db.tasks.put(atualizado);
     const agora = Date.now();
-    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "pick", taskId: task.id, alveoloId, quantidade, motivo, criadoEm: agora });
+    await db.outbox.add({ opId: gerarOperacaoId(), tipo: "pick", taskId: task.id, alveoloId, quantidade, motivo, criadoEm: agora });
     if (completo) {
-      await db.outbox.add({ opId: crypto.randomUUID(), tipo: "confirm", taskId: task.id, criadoEm: agora + 1 });
+      await db.outbox.add({ opId: gerarOperacaoId(), tipo: "confirm", taskId: task.id, criadoEm: agora + 1 });
     }
 
     setTasks((prev) => prev.map((t) => (t.id === task.id ? atualizado : t)));
