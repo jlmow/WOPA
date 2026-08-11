@@ -21,6 +21,11 @@ export function OrdensPreparacaoPage() {
   const [alturaPorOrdem, setAlturaPorOrdem] = useState<Record<string, string>>({});
   const [celulaPorPlataforma, setCelulaPorPlataforma] = useState<Record<string, string>>({});
   const [dataPorPlataforma, setDataPorPlataforma] = useState<Record<string, string>>({});
+  // Célula/dia "gerais" (por cabeçalho) — escolher aqui aplica-se a todas as
+  // plataformas ainda não despachadas da ordem de uma vez, mas cada linha
+  // continua editável individualmente para exceções.
+  const [celulaGeralPorOrdem, setCelulaGeralPorOrdem] = useState<Record<string, string>>({});
+  const [dataGeralPorOrdem, setDataGeralPorOrdem] = useState<Record<string, string>>({});
   const [aProcessar, setAProcessar] = useState<string | null>(null);
 
   function carregar() {
@@ -65,6 +70,31 @@ export function OrdensPreparacaoPage() {
     }
   }
 
+  function plataformasPorDespachar(ordem: OrdemPreparacaoResumo) {
+    return ordem.plataformas.filter((p) => plataformas[p.id]?.missaoId == null);
+  }
+
+  // Escolher célula/dia no cabeçalho aplica-se logo a todas as linhas ainda
+  // por despachar — mas cada linha fica sempre editável a seguir, para uma
+  // plataforma poder ir para uma célula/dia diferente das restantes.
+  function aplicarCelulaGeral(ordem: OrdemPreparacaoResumo, celulaId: string) {
+    setCelulaGeralPorOrdem((prev) => ({ ...prev, [ordem.id]: celulaId }));
+    setCelulaPorPlataforma((prev) => {
+      const atualizado = { ...prev };
+      for (const p of plataformasPorDespachar(ordem)) atualizado[p.id] = celulaId;
+      return atualizado;
+    });
+  }
+
+  function aplicarDataGeral(ordem: OrdemPreparacaoResumo, data: string) {
+    setDataGeralPorOrdem((prev) => ({ ...prev, [ordem.id]: data }));
+    setDataPorPlataforma((prev) => {
+      const atualizado = { ...prev };
+      for (const p of plataformasPorDespachar(ordem)) atualizado[p.id] = data;
+      return atualizado;
+    });
+  }
+
   async function despachar(plataformaId: string) {
     setAProcessar(plataformaId);
     setErro(null);
@@ -75,6 +105,31 @@ export function OrdensPreparacaoPage() {
         celulaPorPlataforma[plataformaId] || null,
         dataPorPlataforma[plataformaId] || null,
       );
+      carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setAProcessar(null);
+    }
+  }
+
+  // Botão "Despachar" do cabeçalho: despacha de uma vez todas as
+  // plataformas ainda por despachar desta ordem, cada uma com a
+  // célula/dia que tiver nesse momento (geral, ou a exceção da própria linha).
+  async function despacharTodas(ordem: OrdemPreparacaoResumo) {
+    const alvo = plataformasPorDespachar(ordem);
+    if (alvo.length === 0) return;
+    setAProcessar(ordem.id);
+    setErro(null);
+    try {
+      for (const p of alvo) {
+        await plataformasApi.despachar(
+          p.id,
+          celulaPorPlataforma[p.id] || null,
+          celulaPorPlataforma[p.id] || null,
+          dataPorPlataforma[p.id] || null,
+        );
+      }
       carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -192,10 +247,48 @@ export function OrdensPreparacaoPage() {
                   <th>Plataforma</th>
                   <th>Tipo</th>
                   <th>Camada</th>
-                  <th>Célula</th>
-                  <th>Dia</th>
+                  <th>
+                    Célula
+                    {plataformasPorDespachar(ordem).length > 0 && (
+                      <select
+                        value={celulaGeralPorOrdem[ordem.id] ?? ""}
+                        onChange={(e) => aplicarCelulaGeral(ordem, e.target.value)}
+                        data-testid={`celula-geral-${ordem.id}`}
+                      >
+                        <option value="">Escolher célula (todas)…</option>
+                        {celulas.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nome}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </th>
+                  <th>
+                    Dia
+                    {plataformasPorDespachar(ordem).length > 0 && (
+                      <input
+                        type="date"
+                        min={hoje()}
+                        value={dataGeralPorOrdem[ordem.id] ?? ""}
+                        onChange={(e) => aplicarDataGeral(ordem, e.target.value)}
+                        data-testid={`data-geral-${ordem.id}`}
+                      />
+                    )}
+                  </th>
                   <th>Estado</th>
-                  <th></th>
+                  <th>
+                    {plataformasPorDespachar(ordem).length > 0 && (
+                      <button
+                        className="button button--small button--primary"
+                        onClick={() => despacharTodas(ordem)}
+                        disabled={aProcessar === ordem.id}
+                        data-testid={`despachar-todas-${ordem.id}`}
+                      >
+                        {aProcessar === ordem.id ? "A despachar…" : "Despachar todas"}
+                      </button>
+                    )}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -245,7 +338,7 @@ export function OrdensPreparacaoPage() {
                           <button
                             className="button button--small"
                             onClick={() => despachar(plat.id)}
-                            disabled={aProcessar === plat.id}
+                            disabled={aProcessar === plat.id || aProcessar === ordem.id}
                             data-testid={`despachar-${plat.id}`}
                           >
                             {aProcessar === plat.id ? "A despachar…" : "Despachar"}

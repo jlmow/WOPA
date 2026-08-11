@@ -199,6 +199,10 @@ body {
   padding: 13px 16px;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
+  /* Sem isto, uma célula vazia (ex.: linha "Ações" sem botões) fica com
+     altura diferente das células com conteúdo na mesma linha, e a borda
+     de baixo aparece desalinhada entre colunas -- visto ao vivo. */
+  vertical-align: middle;
 }
 
 .data-table th {
@@ -380,6 +384,7 @@ body {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  min-height: 22px;
 }
 
 /* Bloco de Tipificar (OrdensPreparacaoPage) -- explica o que o botão faz e
