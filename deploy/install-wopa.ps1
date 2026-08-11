@@ -532,8 +532,27 @@ if (Test-Path (Join-Path $InstallRoot "controller")) {
 }
 
 Write-Host "  A reiniciar os application pools..."
-Restart-WebAppPool -Name "WOPA-Orchestrator" -ErrorAction SilentlyContinue
-Restart-WebAppPool -Name "WOPA-Static" -ErrorAction SilentlyContinue
+
+# Restart-WebAppPool assume que o pool está a correr -- se estava parado
+# (ex.: nós próprios paramos o WOPA-Orchestrator antes do publish, mais
+# acima) ele lança "You have to start stopped object before restarting
+# it.", e -ErrorAction SilentlyContinue não chega a suprimir isto (é uma
+# exceção .NET lançada diretamente pelo provider, não um erro não-
+# terminante normal) -- por isso decide Start vs. Restart consoante o
+# estado atual, e mesmo assim protege com try/catch.
+function Restart-OrStart-AppPool([string]$Name) {
+    try {
+        $state = (Get-WebAppPoolState -Name $Name -ErrorAction Stop).Value
+        if ($state -eq "Stopped") { Start-WebAppPool -Name $Name }
+        else { Restart-WebAppPool -Name $Name }
+    }
+    catch {
+        Write-Warn2 "Não consegui reiniciar o AppPool $Name ($($_.Exception.Message))"
+    }
+}
+
+Restart-OrStart-AppPool -Name "WOPA-Orchestrator"
+Restart-OrStart-AppPool -Name "WOPA-Static"
 
 # -------------------------------------------------------------------
 # 6. Verificação
