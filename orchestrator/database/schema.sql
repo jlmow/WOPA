@@ -799,7 +799,7 @@ GO
 --     Ordem já chega tipificada de lá — TipoPlataformaCodigo/
 --     NPlataformas passam a poder vir prontos, sem o WOPA recalcular
 --     por cubicagem). Os restantes campos (NumeroOrdem/NumeroPedido/
---     NumeroCliente/NumRefs/TotalCaixas/VolumeTotalCm3/PesoTotalKg/
+--     NumeroProforma/NumRefs/TotalCaixas/VolumeTotalCm3/PesoTotalKg/
 --     RefsSemFicha/Observacoes) são só para rastreabilidade contra a
 --     origem -- ver ARCHITECTURE.md ADR-032.
 -------------------------------------------------------------------------
@@ -820,9 +820,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.orden
     ALTER TABLE dbo.ordenspreparacao ADD NumeroPedido INT NULL;
 GO
 
--- numpf na origem -- significado exato por confirmar com o cliente (ver ARCHITECTURE.md ADR-032).
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumeroCliente')
-    ALTER TABLE dbo.ordenspreparacao ADD NumeroCliente INT NULL;
+-- numpf na origem -- número de proforma/encomenda (ADR-032).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumeroProforma')
+    ALTER TABLE dbo.ordenspreparacao ADD NumeroProforma INT NULL;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'TipoPlataformaCodigo')

@@ -27,7 +27,7 @@ public record NovaOrdemPreparacaoRequest(
     string? ReferenciaExterna = null,
     int? NumeroOrdem = null,
     int? NumeroPedido = null,
-    int? NumeroCliente = null,
+    int? NumeroProforma = null,
     string? TipoPlataformaCodigo = null,
     int? NPlataformas = null,
     int? NumRefs = null,

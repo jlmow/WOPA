@@ -60,7 +60,7 @@ public static class OrdensPreparacaoEndpoints
                 ReferenciaExterna = pedido.ReferenciaExterna,
                 NumeroOrdem = pedido.NumeroOrdem,
                 NumeroPedido = pedido.NumeroPedido,
-                NumeroCliente = pedido.NumeroCliente,
+                NumeroProforma = pedido.NumeroProforma,
                 TipoPlataformaCodigo = pedido.TipoPlataformaCodigo,
                 NPlataformas = pedido.NPlataformas,
                 NumRefs = pedido.NumRefs,

@@ -1787,10 +1787,10 @@ começar pela Fase 1 e crescer para a Fase 2.
   `TipoPlataformaCodigo`/`NPlataformas` (a decisão do PHC, quando vem);
   `ReferenciaExterna` (o `bostamp`, único, para reimportar a mesma
   Ordem sem duplicar); `NumeroOrdem`/`NumeroPedido`/`NumeroCliente`
-  (`ordem`/`pedido`/`numpf` — este último com significado exato por
-  confirmar, guardado como está por agora); `NumRefs`/`TotalCaixas`/
-  `VolumeTotalCm3`/`PesoTotalKg`/`RefsSemFicha`/`Observacoes` (o resto,
-  só para rastreabilidade/comparação contra a origem).
+  (`ordem`/`pedido`/`numpf` — `numpf` confirmado como número de
+  proforma/encomenda); `NumRefs`/`TotalCaixas`/`VolumeTotalCm3`/
+  `PesoTotalKg`/`RefsSemFicha`/`Observacoes` (o resto, só para
+  rastreabilidade/comparação contra a origem).
 - **`POST /{id}/tipificar` fica em dois caminhos:** se
   `Ordem.TipoPlataformaCodigo` já vier preenchido (da origem), gera as
   Plataformas diretamente a partir daí (ainda chama
@@ -1799,19 +1799,28 @@ começar pela Fase 1 e crescer para a Fase 2.
   tipo). Se não vier (ordens antigas/de teste sem estes campos), mantém
   a cubicagem do próprio WOPA como estava — nada muda para quem já
   testou sem estes campos.
-- **Por fazer — esta amostra não chega para testar o `pda` a sério:**
-  é agregada ao nível da Ordem/PS (uma linha por `pedido`, com
-  `numrefs`/`total_caixas` já somados) — não tem `Sku`/`Quantidade`
-  por linha, que é o que `OrdensSeparacaoLinhas` (e por isso as tarefas
-  de picking) precisam. Por esse motivo, esta amostra concreta não foi
-  importada para a BD — só ficou pronto o caminho para quando vier
-  acompanhada de detalhe por linha. Ver pedido ao cliente na conversa:
-  PS com `Sku`+`Quantidade`, `Artigos` reais (pelo menos EAN/dimensões
-  dos SKUs testados), `ALV`/`Zonas` reais do armazém, e stock (`SA`)
-  real para essas referências.
-- **`numpf`:** significado exato não confirmado (número de cliente?
-  proforma? outro?) — guardado tal como vem, sem lhe atribuir semântica
-  a mais até o cliente confirmar.
+- **A amostra inicial era agregada** (uma linha por `pedido`, com
+  `numrefs`/`total_caixas` já somados) — sem `Sku`/`Quantidade` por
+  linha não dava para gerar tarefas de picking. O cliente enviou a
+  seguir uma segunda amostra já ao nível da linha (`bostamp, ordem,
+  pedido, numpf, clientepf, artigo, qtd, u_observac, caixas_nec,
+  vol_pick, peso_linha, qualidade`) — `artigo` é o próprio código de
+  barras (EAN-13, prefixo `560` = Portugal); `qualidade` usa
+  literalmente os valores do enum `QualidadeFicha` do WOPA (`OK`,
+  `SEM_DIMS`, `SEM_PESO`, ...), confirmando que a classificação de
+  A.6 já existe do lado do PHC. As 4 linhas do pedido 21628 batem
+  certo com o cabeçalho já registado (`caixas_nec` soma 18, `vol_pick`
+  soma 140280 cm³, `peso_linha` soma 27.78 kg).
+- **`database/dados-teste.sql` (novo, script separado):** carrega essa
+  Ordem real (cabeçalho + 4 linhas) mais o que ainda faltava e não veio
+  do PHC — zona/alvéolos de teste, `Artigos` (descrição/dimensões
+  estimadas a partir de `vol_pick`/`peso_linha`/`qtd`, já que o PHC só
+  deu o total por linha, não a ficha do artigo) e stock (`SA`). Deixa
+  pronta 1 missão de picking com a plataforma P2 por montar — primeiro
+  teste real de scan num terminal Android. IDs com prefixo
+  `teste`/`TST-` de propósito, com instruções de limpeza no fundo do
+  próprio ficheiro.
+- **`numpf` confirmado:** número de proforma (encomenda).
 
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma

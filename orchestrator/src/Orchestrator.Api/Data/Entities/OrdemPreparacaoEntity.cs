@@ -32,7 +32,7 @@ public class OrdemPreparacaoEntity
     public string? ReferenciaExterna { get; set; }
     public int? NumeroOrdem { get; set; }
     public int? NumeroPedido { get; set; }
-    public int? NumeroCliente { get; set; }
+    public int? NumeroProforma { get; set; }
     public string? TipoPlataformaCodigo { get; set; }
     public int? NPlataformas { get; set; }
     public int? NumRefs { get; set; }
