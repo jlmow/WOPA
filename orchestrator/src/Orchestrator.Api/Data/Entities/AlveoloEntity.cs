@@ -8,5 +8,12 @@ public class AlveoloEntity
     public string ZonaId { get; set; } = null!;
     public bool Ativo { get; set; } = true;
 
+    /// <summary>Picking | Reserva | Deposito | Buffer (ADR-030).</summary>
+    public string Tipo { get; set; } = "Picking";
+    /// <summary>Posição estruturada (ADR-030) — sequenciação de rota dentro do corredor.</summary>
+    public string? Corredor { get; set; }
+    public int? Coluna { get; set; }
+    public int? Nivel { get; set; }
+
     public ZonaEntity? Zona { get; set; }
 }

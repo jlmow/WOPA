@@ -880,5 +880,65 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSA
     ALTER TABLE dbo.MISSAO ADD PlataformaConfirmadaEm DATETIME2 NULL;
 GO
 
+-------------------------------------------------------------------------
+-- 26. Migrações aditivas (ADR-030) — ALV: tipo de alvéolo (picking,
+--     reserva, depósito de equipamento vazio, buffer de packing) e
+--     posição estruturada (corredor/coluna/nível) para sequenciar rota
+--     de picking, em vez de só o Codigo em texto livre.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Tipo')
+    -- Picking | Reserva | Deposito | Buffer
+    ALTER TABLE dbo.ALV ADD Tipo NVARCHAR(20) NOT NULL DEFAULT (N'Picking');
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Corredor')
+    ALTER TABLE dbo.ALV ADD Corredor NVARCHAR(10) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Coluna')
+    ALTER TABLE dbo.ALV ADD Coluna INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Nivel')
+    ALTER TABLE dbo.ALV ADD Nivel INT NULL;
+GO
+
+-- Backfill dos alvéolos de exemplo (secção 20) — corredor/coluna/nível
+-- extraídos do próprio Codigo ("A-01-03" = corredor A, coluna 1, nível
+-- 3); dados reais do cliente ainda por carregar.
+UPDATE dbo.ALV SET Corredor = N'A', Coluna = 1, Nivel = 3  WHERE Id = N'alv-a0103' AND Corredor IS NULL;
+UPDATE dbo.ALV SET Corredor = N'A', Coluna = 2, Nivel = 11 WHERE Id = N'alv-a0211' AND Corredor IS NULL;
+UPDATE dbo.ALV SET Corredor = N'B', Coluna = 4, Nivel = 2  WHERE Id = N'alv-b0402' AND Corredor IS NULL;
+GO
+
+-------------------------------------------------------------------------
+-- 27. CestoInstancias (ADR-030) — cesto físico com matrícula própria,
+--     equipamento reutilizável (CESTOS continua a ser só o tipo/spec).
+--     Estado Livre = no depósito, à espera de ser montado numa
+--     plataforma; EmUso = montado, em circulação (sem alvéolo fixo
+--     enquanto isso). Criada pelo próprio gate de montagem do picking
+--     (ver PickingEndpoints) na primeira vez que lê cada matrícula --
+--     ainda não há um fluxo de pré-registo de equipamento à parte.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CestoInstancias' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.CestoInstancias
+    (
+        Id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        Matricula          NVARCHAR(50)  NOT NULL UNIQUE,
+        TipoCestoId        NVARCHAR(50)  NOT NULL,
+        -- Livre | EmUso
+        Estado             NVARCHAR(20)  NOT NULL DEFAULT (N'Livre'),
+        LocalizacaoAtualId NVARCHAR(50)  NULL,
+        CriadoEm           DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
+
+        CONSTRAINT FK_CestoInstancias_Tipo FOREIGN KEY (TipoCestoId) REFERENCES dbo.CESTOS (Id),
+        CONSTRAINT FK_CestoInstancias_Localizacao FOREIGN KEY (LocalizacaoAtualId) REFERENCES dbo.ALV (Id)
+    );
+END
+GO
+
 PRINT 'Base de dados WOPA pronta.';
 GO

@@ -126,6 +126,8 @@ public static class PickingEndpoints
                     return Results.Conflict(new ErrorResponse("Os cestos lidos não correspondem aos desta plataforma."));
             }
 
+            await GarantirCestoInstanciasAsync(db, cestosLidos);
+
             missao.PlataformaConfirmada = true;
             missao.PlataformaConfirmadaEm = DateTime.UtcNow;
 
@@ -417,6 +419,42 @@ public static class PickingEndpoints
         var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
         var tipo = await db.TiposPlataforma.SingleAsync(t => t.Codigo == plataforma.TipoPlataformaCodigo);
         return new MontagemInfo(plataforma.Id, tipo.Codigo, tipo.CestosPorPlataforma, missao.PlataformaConfirmada, plataforma.MontadaEm is null);
+    }
+
+    // ADR-030: o gate de montagem passa a ser também onde o cesto físico
+    // (matrícula) nasce como CestoInstancia -- ainda não há um fluxo de
+    // pré-registo de equipamento à parte. Uma matrícula já conhecida só
+    // muda de estado (volta a EmUso, larga a localização parada); uma
+    // matrícula nova cria a instância. Só há um tipo de cesto seedado por
+    // agora ("cesto-standard") -- por revisitar quando houver mais do
+    // que um.
+    private static async Task GarantirCestoInstanciasAsync(WopaDbContext db, IReadOnlyCollection<string> matriculas)
+    {
+        if (matriculas.Count == 0) return;
+
+        var existentes = await db.CestoInstancias
+            .Where(c => matriculas.Contains(c.Matricula))
+            .ToDictionaryAsync(c => c.Matricula);
+
+        string? tipoCestoDefaultId = null;
+        foreach (var matricula in matriculas)
+        {
+            if (existentes.TryGetValue(matricula, out var instancia))
+            {
+                instancia.Estado = "EmUso";
+                instancia.LocalizacaoAtualId = null;
+                continue;
+            }
+
+            tipoCestoDefaultId ??= await db.Cestos.Select(c => c.Id).FirstAsync();
+            db.CestoInstancias.Add(new CestoInstanciaEntity
+            {
+                Id = Guid.NewGuid().ToString("n"),
+                Matricula = matricula,
+                TipoCestoId = tipoCestoDefaultId,
+                Estado = "EmUso",
+            });
+        }
     }
 
     // Opção A (ARCHITECTURE.md ADR-012): a API pública mantém o formato

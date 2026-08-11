@@ -1681,6 +1681,42 @@ começar pela Fase 1 e crescer para a Fase 2.
   `CestosNecessarios` (colunas que já existem no schema, por popular),
   não sobre este gate de entrada.
 
+### ADR-030 — `ALV` com tipo e posição estruturada; cesto passa a ter matrícula própria (`CestoInstancias`)
+
+- **Contexto:** resposta às sugestões de melhoria ao `ALV` levantadas em
+  ADR-029 — o cliente escolheu duas das três (tipo de alvéolo e posição
+  estruturada, não capacidade) e pediu para avançar também com a tabela
+  de instância de cesto que tinha ficado só na ideia.
+- **`ALV` ganha `Tipo`** (`Picking | Reserva | Deposito | Buffer`,
+  default `Picking`) — agora dá para marcar o "depósito" de paletes/
+  cestos vazios (para onde uma plataforma volta ao ser libertada, ver
+  ADR-029) e um eventual buffer de packing como alvéolos normais, só que
+  de outro tipo, em vez de precisarem de tabela própria.
+- **`ALV` ganha `Corredor`/`Coluna`/`Nivel`** (estruturado, não só o
+  `Codigo` em texto) — base para a sequenciação de rota dentro do
+  corredor que já estava listada como decisão em aberto do v0.4 (A.9).
+  Os 3 alvéolos de exemplo foram retro-preenchidos a partir do próprio
+  `Codigo` (`"A-01-03"` → corredor `A`, coluna 1, nível 3).
+- **`CestoInstancias` (tabela nova):** `Id, Matricula (única), TipoCestoId
+  (FK a CESTOS, que continua só o tipo/spec), Estado (Livre|EmUso),
+  LocalizacaoAtualId (FK a ALV, NULL enquanto EmUso — em circulação, sem
+  alvéolo fixo)` — o mesmo desenho já proposto para a Plataforma
+  (`LocalizacaoAtualId → Alveolos`) no artigo da base de dados.
+- **Wiring com o gate de montagem (ADR-029):** `PlataformaCestos`
+  mantém-se como estava (é o que valida "é a mesma plataforma" entre
+  zonas) — mas agora, sempre que o gate lê uma matrícula de cesto, o
+  próprio endpoint garante que existe uma `CestoInstancia`: se a
+  matrícula já é conhecida, só muda de estado para `EmUso`; se é nova,
+  cria a instância ali mesmo. Ainda não há um ecrã/fluxo de pré-registo
+  de equipamento — a primeira vez que um cesto físico é lido é que ele
+  "nasce" no sistema.
+- **Simplificação assumida:** como só há um tipo de cesto seedado
+  (`cesto-standard`), a instância nova usa sempre esse tipo por omissão
+  — por revisitar quando existir mais do que um tipo de cesto real.
+- **Fora de alcance:** a transição para `Livre`/volta ao depósito
+  (`LocalizacaoAtualId` preenchido) depende do `packing`, que continua
+  deliberadamente por fazer.
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para
@@ -1698,12 +1734,11 @@ começar pela Fase 1 e crescer para a Fase 2.
   descrito nas notas mais recentes, ou se essas notas descreviam outro
   ponto do fluxo (empilhador/reserva) sendo o nome "P0" usado de forma
   solta.
-- **Cesto como instância com matrícula própria (ADR-029/ALV):** hoje só
-  existe como texto solto em `PlataformaCestos`. Decidir se vale a pena
-  uma tabela `Cestos` de instância (matrícula, tipo, estado
-  livre/em-uso, última plataforma) — ligaria a este gate, ao
-  `MissaoLinhas.CestoId` já existente mas por usar, e à sugestão de
-  melhorias ao `ALV`.
+- **Capacidade do `ALV` (sugestão do ADR-029 não escolhida por agora):**
+  nenhum limite volumétrico/unidades associado ao alvéolo — nada impede
+  sugerir um alvéolo já cheio, nem o `controller` sabe quando um
+  "depósito" está sem espaço para equipamento livre. Fica para quando
+  fizer falta a sério.
 - **Origem do stock real por alvéolo (ADR-022):** `SA`/`SL` calculam-se
   sozinhos a partir dos movimentos (decisão do cliente), mas falta o
   import inicial — hoje só os 3 alvéolos de exemplo têm `SA`, nada
