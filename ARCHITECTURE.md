@@ -1607,9 +1607,22 @@ começar pela Fase 1 e crescer para a Fase 2.
   zona (só célula por agora), modelo de KPIs (produtividade/qualidade/
   serviço), e o próprio `packing`.
 
----
+### ADR-028 — Segunda pass visual, mais ousada (pda feito; controller por fazer)
 
-## 8. Em aberto
+- **Contexto:** a modernização do ADR-024 não foi longe o suficiente para
+  o cliente ("já te vi fazer coisas mais bonitas... sê criativo e
+  moderno") — sem referência concreta para seguir, decisão de ir mais
+  longe por iniciativa própria, mantendo a paleta e as fontes já
+  escolhidas (ADR-026).
+- **`pda` (feito):** textura de grão subtil no fundo (ruído SVG inline,
+  opacidade ~3.5%, efeito "papel" em vez de cor totalmente lisa);
+  tipografia mais expressiva nos títulos e no número grande de
+  progresso, usando os eixos da própria fonte variável Fraunces
+  (`font-variation-settings: "opsz"`, tamanhos maiores, menos peso
+  "neutro"); entrada em cascata animada nas listas (`TaskList`,
+  `option-list`) — cada cartão aparece um pouco depois do anterior,
+  até ao 10º item.
+- **`controller`:** ainda por fazer — próximo passo.
 
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma

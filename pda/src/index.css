@@ -52,7 +52,6 @@
 
   font: 18px/1.4 var(--sans-font);
   color: var(--text);
-  background: var(--bg);
   color-scheme: light;
 }
 
@@ -60,8 +59,25 @@
   box-sizing: border-box;
 }
 
+/* Textura subtil de grão (ADR-028) — ruído SVG muito discreto sobre o
+   creme de fundo, para dar profundidade/textura "de papel" em vez de uma
+   cor totalmente lisa. Puramente decorativo, sem custo de rede (data URI
+   inline) nem impacto em acessibilidade (opacidade muito baixa). */
 body {
   margin: 0;
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
+
+@keyframes wopa-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .app {
@@ -84,9 +100,10 @@ body {
 
 .app__header h1 {
   font-family: var(--heading-font);
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  font-size: 25px;
+  font-weight: 480;
+  font-variation-settings: "opsz" 40;
+  letter-spacing: -0.03em;
+  font-size: 30px;
   margin: 0;
 }
 
@@ -98,6 +115,20 @@ body {
   flex-direction: column;
   gap: 10px;
 }
+
+.task-list li {
+  animation: wopa-entrada 320ms ease backwards;
+}
+
+/* Entrada em cascata — cada cartão aparece um pouco depois do anterior,
+   até ao 10º (a partir daí todos ao mesmo tempo, para não alongar a
+   espera em listas grandes). */
+.task-list li:nth-child(1) { animation-delay: 0ms; }
+.task-list li:nth-child(2) { animation-delay: 30ms; }
+.task-list li:nth-child(3) { animation-delay: 60ms; }
+.task-list li:nth-child(4) { animation-delay: 90ms; }
+.task-list li:nth-child(5) { animation-delay: 120ms; }
+.task-list li:nth-child(n+6) { animation-delay: 150ms; }
 
 .task-card {
   width: 100%;
@@ -250,9 +281,10 @@ body {
 
 .scan-screen h2 {
   font-family: var(--heading-font);
-  font-weight: 400;
+  font-weight: 460;
+  font-variation-settings: "opsz" 30;
   letter-spacing: -0.02em;
-  font-size: 22px;
+  font-size: 24px;
   margin: 0 0 4px;
 }
 
@@ -265,11 +297,13 @@ body {
 
 .scan-screen__progress {
   font-family: var(--heading-font);
-  font-size: 44px;
-  font-weight: 400;
+  font-size: 52px;
+  font-weight: 480;
+  font-variation-settings: "opsz" 100;
+  letter-spacing: -0.01em;
   text-align: center;
-  padding: 18px;
-  background: var(--band-bg);
+  padding: 20px;
+  background: linear-gradient(155deg, var(--band-bg), #ecc85a1a);
   border-radius: var(--radius-md);
 }
 
@@ -407,14 +441,18 @@ button {
 
 .login h1 {
   font-family: var(--heading-font);
-  font-weight: 400;
-  font-size: 24px;
+  font-weight: 480;
+  font-variation-settings: "opsz" 40;
+  letter-spacing: -0.02em;
+  font-size: 28px;
   margin: 0;
 }
 
 .login__display {
   font-family: var(--heading-font);
-  font-size: 40px;
+  font-weight: 460;
+  font-variation-settings: "opsz" 100;
+  font-size: 42px;
   letter-spacing: 0.1em;
   min-height: 1.2em;
   color: var(--text-muted);
@@ -471,6 +509,15 @@ button {
   flex-direction: column;
   gap: 10px;
 }
+
+.option-list li {
+  animation: wopa-entrada 320ms ease backwards;
+}
+
+.option-list li:nth-child(1) { animation-delay: 0ms; }
+.option-list li:nth-child(2) { animation-delay: 40ms; }
+.option-list li:nth-child(3) { animation-delay: 80ms; }
+.option-list li:nth-child(n+4) { animation-delay: 120ms; }
 
 .option-card {
   width: 100%;
@@ -578,8 +625,10 @@ button {
 
 .mission-complete h2 {
   font-family: var(--heading-font);
-  font-weight: 400;
-  font-size: 26px;
+  font-weight: 480;
+  font-variation-settings: "opsz" 40;
+  letter-spacing: -0.02em;
+  font-size: 30px;
   margin: 0;
 }
 
