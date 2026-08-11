@@ -424,7 +424,13 @@ function Build-Frontend([string]$Name, [int]$Port) {
     $projDir = Join-Path $SourceRoot $Name
     $envFile = Join-Path $projDir ".env.production"
     $orchestratorUrl = "http://${HostName}:${OrchestratorPort}"
-    Set-Content -Path $envFile -Value "VITE_ORCHESTRATOR_URL=$orchestratorUrl" -Encoding UTF8
+    # -Encoding ASCII (não UTF8): no Windows PowerShell 5.1, -Encoding UTF8
+    # escreve um BOM no início do ficheiro. O parser de .env do Vite não o
+    # ignora, pelo que a chave passa a "﻿VITE_ORCHESTRATOR_URL" e deixa de
+    # bater certo com import.meta.env.VITE_ORCHESTRATOR_URL -- o bundle cai
+    # silenciosamente no valor por omissão (localhost:5080). O conteúdo é
+    # sempre ASCII puro (URL com host/porta), por isso ASCII é seguro.
+    Set-Content -Path $envFile -Value "VITE_ORCHESTRATOR_URL=$orchestratorUrl" -Encoding ASCII
     Write-Ok "$envFile -> VITE_ORCHESTRATOR_URL=$orchestratorUrl"
 
     Push-Location $projDir
