@@ -68,7 +68,7 @@ body {
   max-width: 480px;
   margin: 0 auto;
   min-height: 100svh;
-  padding: 0 16px 16px;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -613,7 +613,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  /* env(safe-area-inset-top): sem isto, esta barra fica por baixo da barra
+     de estado/notch do telemóvel (ecrã cheio, viewport-fit=cover no
+     index.html) -- 0px em navegadores sem notch, inofensivo. */
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
   background: var(--band-bg);
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   box-shadow: var(--shadow-band);

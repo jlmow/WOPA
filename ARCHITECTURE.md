@@ -1524,6 +1524,19 @@ começar pela Fase 1 e crescer para a Fase 2.
   dentro de U+00FF) — não os subsets cirílico/grego/vietnamita que a
   Google serve por omissão. `<link rel="preload">` no `index.html`
   de cada app para evitar flash de texto sem estilo.
+- **Barra de topo do pda sobreposta à área de sistema do telemóvel**
+  (visto ao vivo): `viewport-fit=cover` adicionado ao `index.html` do
+  `pda` + `env(safe-area-inset-top/bottom)` no `.root-layout__bar` e no
+  `.app`, para o conteúdo respeitar sempre a barra de estado/gestos do
+  telemóvel em vez de ficar por baixo dela.
+- **Suspeita (por confirmar):** o cliente reporta as fontes iguais às
+  antigas mesmo depois do deploy — provável causa: IIS sem o tipo MIME
+  `.woff2` registado (comum em versões mais antigas do Windows Server),
+  fazendo o `@font-face` falhar silenciosamente e cair no Georgia do
+  `font-family` fallback. Por confirmar via DevTools (Network, código
+  de estado do pedido a `inter-variable.woff2`) antes de mexer no
+  `web.config` — arriscado adicionar um `mimeMap` duplicado sem saber
+  se já existe ao nível do servidor.
 
 ### ADR-027 — Reunião de planeamento: capacidade/despacho com data no controller, motivos de exceção no pda
 
