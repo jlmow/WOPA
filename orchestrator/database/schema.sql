@@ -32,10 +32,12 @@
     falta a connection string do servidor real do cliente para
     produção.
 
-    Convenção de nomes: TER, US, ALV, CESTOS, MISSAO, SL, SA e CM são
-    nomes de tabela pedidos explicitamente pelo cliente (não apenas
-    códigos de referência) — mantidos exatamente assim. As restantes
-    tabelas (incluindo Artigos, OrdensPreparacao, Plataformas) usam
+    Convenção de nomes: ter, us, alv, cestos, missao, sl, sa e cm
+    correspondem aos códigos pedidos explicitamente pelo cliente (TER,
+    US, ALV, CESTOS, MISSAO, SL, SA, CM) — o código mantém-se, mas
+    todas as tabelas (incluindo estas) passaram a minúsculas por
+    convenção própria (ADR-031), decisão do cliente. As restantes
+    tabelas (incluindo artigos, ordenspreparacao, plataformas) usam
     nomes descritivos por não terem código pedido.
 */
 
@@ -66,9 +68,9 @@ GO
 --    Zonas do armazém (GET /api/zonas).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Zonas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'zonas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.Zonas
+    CREATE TABLE dbo.zonas
     (
         Id      NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo  NVARCHAR(20)  NOT NULL,
@@ -82,9 +84,9 @@ GO
 --    Módulos disponíveis no pda (GET /api/modulos).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Modulos' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'modulos' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.Modulos
+    CREATE TABLE dbo.modulos
     (
         Slug        NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Nome        NVARCHAR(100) NOT NULL,
@@ -98,9 +100,9 @@ GO
 --    Um registo por PDA/dispositivo.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'TER' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ter' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.TER
+    CREATE TABLE dbo.ter
     (
         Id                NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- TER_ID
         Codigo            NVARCHAR(30)  NOT NULL UNIQUE,        -- TER_Codigo, ex. "PDA-001"
@@ -118,9 +120,9 @@ GO
 --    validação (ver ARCHITECTURE.md secção 8).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'US' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'us' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.US
+    CREATE TABLE dbo.us
     (
         Id                NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- US_ID
         NumeroOperador    NVARCHAR(20)  NOT NULL UNIQUE,        -- US_Numero, o que se digita no pda
@@ -136,22 +138,22 @@ GO
 --    Localização física dentro de uma zona.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ALV' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'alv' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.ALV
+    CREATE TABLE dbo.alv
     (
         Id        NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- ALV_ID
         Codigo    NVARCHAR(30)  NOT NULL UNIQUE,         -- ALV_Codigo, ex. "A-01-03"
         ZonaId    NVARCHAR(50)  NOT NULL,
         Ativo     BIT           NOT NULL DEFAULT (1),
 
-        CONSTRAINT FK_ALV_Zona FOREIGN KEY (ZonaId) REFERENCES dbo.Zonas (Id)
+        CONSTRAINT FK_ALV_Zona FOREIGN KEY (ZonaId) REFERENCES dbo.zonas (Id)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ALV_ZonaId' AND object_id = OBJECT_ID(N'dbo.ALV'))
-    CREATE INDEX IX_ALV_ZonaId ON dbo.ALV (ZonaId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_ALV_ZonaId' AND object_id = OBJECT_ID(N'dbo.alv'))
+    CREATE INDEX IX_ALV_ZonaId ON dbo.alv (ZonaId);
 GO
 
 -------------------------------------------------------------------------
@@ -159,9 +161,9 @@ GO
 --    Tipos de cesto: dimensões e quantos cabem numa palete.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CESTOS' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'cestos' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.CESTOS
+    CREATE TABLE dbo.cestos
     (
         Id                    NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo                NVARCHAR(30)  NOT NULL UNIQUE,
@@ -181,9 +183,9 @@ GO
 --    POST /api/artigos.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Artigos' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'artigos' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.Artigos
+    CREATE TABLE dbo.artigos
     (
         Sku                       NVARCHAR(50)   NOT NULL PRIMARY KEY,
         Ean                       NVARCHAR(20)   NULL,
@@ -211,9 +213,9 @@ GO
 --    ADR-017.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'TiposPlataforma' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'tiposplataforma' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.TiposPlataforma
+    CREATE TABLE dbo.tiposplataforma
     (
         Codigo                NVARCHAR(10)  NOT NULL PRIMARY KEY,  -- P0, P1, P2, P4
         Descricao             NVARCHAR(100) NOT NULL,
@@ -237,9 +239,9 @@ GO
 --     propósito — evitar usar esse valor.)
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CM' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'cm' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.CM
+    CREATE TABLE dbo.cm
     (
         Id          INT           NOT NULL PRIMARY KEY,   -- CM_ID
         Descricao   NVARCHAR(100) NOT NULL,
@@ -254,9 +256,9 @@ GO
 --     básica proposta, ainda por validar com o cliente.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'RegrasMissao' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'regrasmissao' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.RegrasMissao
+    CREATE TABLE dbo.regrasmissao
     (
         Id                        INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         Chave                     NVARCHAR(50)  NOT NULL UNIQUE,
@@ -285,9 +287,9 @@ GO
 --     ADR-017.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensPreparacao' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ordenspreparacao' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.OrdensPreparacao
+    CREATE TABLE dbo.ordenspreparacao
     (
         Id              NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Cliente         NVARCHAR(200) NOT NULL,
@@ -310,9 +312,9 @@ GO
 --     ainda não é gerada por este motor, ver ARCHITECTURE.md secção 8.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Plataformas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'plataformas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.Plataformas
+    CREATE TABLE dbo.plataformas
     (
         Id                    NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo                NVARCHAR(30)  NOT NULL,
@@ -326,14 +328,14 @@ BEGIN
         Estado                NVARCHAR(20)  NOT NULL DEFAULT (N'EmPicking'),
         CriadaEm              DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_Plataformas_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.OrdensPreparacao (Id),
-        CONSTRAINT FK_Plataformas_Tipo FOREIGN KEY (TipoPlataformaCodigo) REFERENCES dbo.TiposPlataforma (Codigo)
+        CONSTRAINT FK_Plataformas_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.ordenspreparacao (Id),
+        CONSTRAINT FK_Plataformas_Tipo FOREIGN KEY (TipoPlataformaCodigo) REFERENCES dbo.tiposplataforma (Codigo)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Plataformas_OrdemPreparacaoId' AND object_id = OBJECT_ID(N'dbo.Plataformas'))
-    CREATE INDEX IX_Plataformas_OrdemPreparacaoId ON dbo.Plataformas (OrdemPreparacaoId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Plataformas_OrdemPreparacaoId' AND object_id = OBJECT_ID(N'dbo.plataformas'))
+    CREATE INDEX IX_Plataformas_OrdemPreparacaoId ON dbo.plataformas (OrdemPreparacaoId);
 GO
 
 -------------------------------------------------------------------------
@@ -344,9 +346,9 @@ GO
 --     agrupamento no WOPA.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacao' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ordensseparacao' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.OrdensSeparacao
+    CREATE TABLE dbo.ordensseparacao
     (
         Id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
         OrdemPreparacaoId   NVARCHAR(50)  NOT NULL,
@@ -357,18 +359,18 @@ BEGIN
         Canal               NVARCHAR(20)  NULL,
         RecebidaEm          DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_OrdensSeparacao_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.OrdensPreparacao (Id)
+        CONSTRAINT FK_OrdensSeparacao_OrdemPreparacao FOREIGN KEY (OrdemPreparacaoId) REFERENCES dbo.ordenspreparacao (Id)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacao_OrdemPreparacaoId' AND object_id = OBJECT_ID(N'dbo.OrdensSeparacao'))
-    CREATE INDEX IX_OrdensSeparacao_OrdemPreparacaoId ON dbo.OrdensSeparacao (OrdemPreparacaoId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacao_OrdemPreparacaoId' AND object_id = OBJECT_ID(N'dbo.ordensseparacao'))
+    CREATE INDEX IX_OrdensSeparacao_OrdemPreparacaoId ON dbo.ordensseparacao (OrdemPreparacaoId);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OrdensSeparacaoLinhas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'ordensseparacaolinhas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.OrdensSeparacaoLinhas
+    CREATE TABLE dbo.ordensseparacaolinhas
     (
         Id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
         OrdemSeparacaoId    NVARCHAR(50)  NOT NULL,
@@ -381,16 +383,16 @@ BEGIN
         -- ARCHITECTURE.md secção 8.
         PlataformaId        NVARCHAR(50)  NULL,
 
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Ordem FOREIGN KEY (OrdemSeparacaoId) REFERENCES dbo.OrdensSeparacao (Id),
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
-        CONSTRAINT FK_OrdensSeparacaoLinhas_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Ordem FOREIGN KEY (OrdemSeparacaoId) REFERENCES dbo.ordensseparacao (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.alv (Id),
+        CONSTRAINT FK_OrdensSeparacaoLinhas_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.plataformas (Id),
         CONSTRAINT CK_OrdensSeparacaoLinhas_Quantidade CHECK (Quantidade > 0)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacaoLinhas_OrdemId' AND object_id = OBJECT_ID(N'dbo.OrdensSeparacaoLinhas'))
-    CREATE INDEX IX_OrdensSeparacaoLinhas_OrdemId ON dbo.OrdensSeparacaoLinhas (OrdemSeparacaoId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_OrdensSeparacaoLinhas_OrdemId' AND object_id = OBJECT_ID(N'dbo.ordensseparacaolinhas'))
+    CREATE INDEX IX_OrdensSeparacaoLinhas_OrdemId ON dbo.ordensseparacaolinhas (OrdemSeparacaoId);
 GO
 
 -------------------------------------------------------------------------
@@ -401,9 +403,9 @@ GO
 --     secção 8). Estados e motivos de pausa seguem A.13.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MISSAO' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'missao' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.MISSAO
+    CREATE TABLE dbo.missao
     (
         Id              NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo          NVARCHAR(30)  NOT NULL,
@@ -427,10 +429,10 @@ BEGIN
         RetomadaEm      DATETIME2     NULL,
         ConcluidaEm     DATETIME2     NULL,
 
-        CONSTRAINT FK_MISSAO_Zona FOREIGN KEY (ZonaId) REFERENCES dbo.Zonas (Id),
-        CONSTRAINT FK_MISSAO_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
-        CONSTRAINT FK_MISSAO_Utilizador FOREIGN KEY (UtilizadorId) REFERENCES dbo.US (Id),
-        CONSTRAINT FK_MISSAO_Terminal FOREIGN KEY (TerminalId) REFERENCES dbo.TER (Id)
+        CONSTRAINT FK_MISSAO_Zona FOREIGN KEY (ZonaId) REFERENCES dbo.zonas (Id),
+        CONSTRAINT FK_MISSAO_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.plataformas (Id),
+        CONSTRAINT FK_MISSAO_Utilizador FOREIGN KEY (UtilizadorId) REFERENCES dbo.us (Id),
+        CONSTRAINT FK_MISSAO_Terminal FOREIGN KEY (TerminalId) REFERENCES dbo.ter (Id)
     );
 END
 GO
@@ -444,9 +446,9 @@ GO
 --     só para o cabeçalho MISSAO — nome descritivo mantido aqui.)
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'MissaoLinhas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'missaolinhas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.MissaoLinhas
+    CREATE TABLE dbo.missaolinhas
     (
         Id                     NVARCHAR(50)   NOT NULL PRIMARY KEY,
         MissaoId               NVARCHAR(50)   NOT NULL,
@@ -463,17 +465,17 @@ BEGIN
         -- Pendente | EmProgresso | Concluida
         Estado                 NVARCHAR(20)   NOT NULL DEFAULT (N'Pendente'),
 
-        CONSTRAINT FK_MissaoLinhas_Missao FOREIGN KEY (MissaoId) REFERENCES dbo.MISSAO (Id),
-        CONSTRAINT FK_MissaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
-        CONSTRAINT FK_MissaoLinhas_TipoPlataforma FOREIGN KEY (TipoPlataformaCodigo) REFERENCES dbo.TiposPlataforma (Codigo),
-        CONSTRAINT FK_MissaoLinhas_Cesto FOREIGN KEY (CestoId) REFERENCES dbo.CESTOS (Id),
+        CONSTRAINT FK_MissaoLinhas_Missao FOREIGN KEY (MissaoId) REFERENCES dbo.missao (Id),
+        CONSTRAINT FK_MissaoLinhas_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.alv (Id),
+        CONSTRAINT FK_MissaoLinhas_TipoPlataforma FOREIGN KEY (TipoPlataformaCodigo) REFERENCES dbo.tiposplataforma (Codigo),
+        CONSTRAINT FK_MissaoLinhas_Cesto FOREIGN KEY (CestoId) REFERENCES dbo.cestos (Id),
         CONSTRAINT CK_MissaoLinhas_Quantidade CHECK (QuantidadeLida >= 0 AND QuantidadeLida <= QuantidadeAlvo)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MissaoLinhas_MissaoId' AND object_id = OBJECT_ID(N'dbo.MissaoLinhas'))
-    CREATE INDEX IX_MissaoLinhas_MissaoId ON dbo.MissaoLinhas (MissaoId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MissaoLinhas_MissaoId' AND object_id = OBJECT_ID(N'dbo.missaolinhas'))
+    CREATE INDEX IX_MissaoLinhas_MissaoId ON dbo.missaolinhas (MissaoId);
 GO
 
 -------------------------------------------------------------------------
@@ -481,9 +483,9 @@ GO
 --     Idempotência das operações vindas de PDAs offline (ADR-007).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'OperacoesProcessadas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'operacoesprocessadas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.OperacoesProcessadas
+    CREATE TABLE dbo.operacoesprocessadas
     (
         OperacaoId      NVARCHAR(50)  NOT NULL PRIMARY KEY,
         MissaoLinhaId   NVARCHAR(50)  NOT NULL,
@@ -491,7 +493,7 @@ BEGIN
         Tipo            NVARCHAR(20)  NOT NULL,
         ProcessadoEm    DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_OperacoesProcessadas_Linha FOREIGN KEY (MissaoLinhaId) REFERENCES dbo.MissaoLinhas (Id)
+        CONSTRAINT FK_OperacoesProcessadas_Linha FOREIGN KEY (MissaoLinhaId) REFERENCES dbo.missaolinhas (Id)
     );
 END
 GO
@@ -502,9 +504,9 @@ GO
 --     movimento de saída (CM_ID > 500).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'SL' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sl' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.SL
+    CREATE TABLE dbo.sl
     (
         Id                  BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
         CodigoMovimentoId   INT            NOT NULL,
@@ -514,16 +516,16 @@ BEGIN
         MissaoLinhaId       NVARCHAR(50)   NULL,        -- preenchido quando o movimento vem de um picking
         CriadoEm            DATETIME2      NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_SL_Codigo FOREIGN KEY (CodigoMovimentoId) REFERENCES dbo.CM (Id),
-        CONSTRAINT FK_SL_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
-        CONSTRAINT FK_SL_MissaoLinha FOREIGN KEY (MissaoLinhaId) REFERENCES dbo.MissaoLinhas (Id),
+        CONSTRAINT FK_SL_Codigo FOREIGN KEY (CodigoMovimentoId) REFERENCES dbo.cm (Id),
+        CONSTRAINT FK_SL_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.alv (Id),
+        CONSTRAINT FK_SL_MissaoLinha FOREIGN KEY (MissaoLinhaId) REFERENCES dbo.missaolinhas (Id),
         CONSTRAINT CK_SL_Quantidade CHECK (Quantidade > 0)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SL_Sku_Alveolo' AND object_id = OBJECT_ID(N'dbo.SL'))
-    CREATE INDEX IX_SL_Sku_Alveolo ON dbo.SL (Sku, AlveoloId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SL_Sku_Alveolo' AND object_id = OBJECT_ID(N'dbo.sl'))
+    CREATE INDEX IX_SL_Sku_Alveolo ON dbo.sl (Sku, AlveoloId);
 GO
 
 -------------------------------------------------------------------------
@@ -532,9 +534,9 @@ GO
 --     SL (18) vai atualizando ao longo do tempo.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'SA' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sa' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.SA
+    CREATE TABLE dbo.sa
     (
         Sku            NVARCHAR(50)  NOT NULL,
         AlveoloId      NVARCHAR(50)  NOT NULL,
@@ -542,35 +544,23 @@ BEGIN
         AtualizadoEm   DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
         CONSTRAINT PK_SA PRIMARY KEY (Sku, AlveoloId),
-        CONSTRAINT FK_SA_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.ALV (Id),
+        CONSTRAINT FK_SA_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.alv (Id),
         CONSTRAINT CK_SA_Quantidade CHECK (Quantidade >= 0)
     );
 END
 GO
 
 -------------------------------------------------------------------------
--- 20. Seed — dados de exemplo. Cobre o circuito completo: Artigo ->
---     Ordem de Preparação (já composta, como chegaria de outro
---     software) -> Plataforma -> Missão, para que a PoC
---     controller/picking tenha algo real para trabalhar assim que a
---     base de dados for criada.
+-- 20. Seed — dados de referência/configuração (ADR-031). Só o que o
+--     próprio WOPA precisa para funcionar (módulos, tipos de
+--     plataforma/cesto, códigos de movimento, regra de missão
+--     por omissão) — os dados de negócio (zonas, alvéolos, artigos,
+--     ordens, missões) deixaram de ser semeados aqui: a partir de
+--     agora vêm todos de dados reais, geridos como qualquer outro
+--     registo.
 -------------------------------------------------------------------------
 
-MERGE dbo.Zonas AS alvo
-USING (VALUES
-    (N'zona-a', N'A',      N'Picking geral'),
-    (N'zona-b', N'B',      N'Volumosos'),
-    (N'zona-c', N'C',      N'Frio'),
-    (N'doca-1', N'Doca 1', N'Expedição')
-) AS novo (Id, Codigo, Nome)
-ON alvo.Id = novo.Id
-WHEN MATCHED THEN
-    UPDATE SET Codigo = novo.Codigo, Nome = novo.Nome
-WHEN NOT MATCHED THEN
-    INSERT (Id, Codigo, Nome) VALUES (novo.Id, novo.Codigo, novo.Nome);
-GO
-
-MERGE dbo.Modulos AS alvo
+MERGE dbo.modulos AS alvo
 USING (VALUES
     (N'picking',       N'Picking',       CAST(1 AS BIT)),
     (N'transporte',     N'Transporte',     CAST(0 AS BIT)),
@@ -581,37 +571,8 @@ WHEN NOT MATCHED THEN
     INSERT (Slug, Nome, Disponivel) VALUES (novo.Slug, novo.Nome, novo.Disponivel);
 GO
 
-MERGE dbo.TER AS alvo
-USING (VALUES
-    (N'ter-001', N'PDA-001', N'Terminal de exemplo para a PoC')
-) AS novo (Id, Codigo, Descricao)
-ON alvo.Id = novo.Id
-WHEN NOT MATCHED THEN
-    INSERT (Id, Codigo, Descricao) VALUES (novo.Id, novo.Codigo, novo.Descricao);
-GO
-
-MERGE dbo.US AS alvo
-USING (VALUES
-    (N'us-001', N'42', N'1234', N'Operador de exemplo')
-) AS novo (Id, NumeroOperador, Pin, Nome)
-ON alvo.Id = novo.Id
-WHEN NOT MATCHED THEN
-    INSERT (Id, NumeroOperador, Pin, Nome) VALUES (novo.Id, novo.NumeroOperador, novo.Pin, novo.Nome);
-GO
-
-MERGE dbo.ALV AS alvo
-USING (VALUES
-    (N'alv-a0103', N'A-01-03', N'zona-a'),
-    (N'alv-a0211', N'A-02-11', N'zona-a'),
-    (N'alv-b0402', N'B-04-02', N'zona-b')
-) AS novo (Id, Codigo, ZonaId)
-ON alvo.Id = novo.Id
-WHEN NOT MATCHED THEN
-    INSERT (Id, Codigo, ZonaId) VALUES (novo.Id, novo.Codigo, novo.ZonaId);
-GO
-
 -- Dimensões de exemplo (mm) — por confirmar com o cliente.
-MERGE dbo.CESTOS AS alvo
+MERGE dbo.cestos AS alvo
 USING (VALUES
     (N'cesto-standard', N'CESTO-STD', 600, 400, 300, 4)
 ) AS novo (Id, Codigo, ComprimentoMm, LarguraMm, AlturaMm, QuantidadePorPalete)
@@ -633,7 +594,7 @@ GO
 -- influenciar a capacidade — são duas medidas diferentes, não a mesma
 -- corrigida duas vezes. Ver ARCHITECTURE.md ADR-018 para a
 -- reconciliação e o que fica por confirmar.
-MERGE dbo.TiposPlataforma AS alvo
+MERGE dbo.tiposplataforma AS alvo
 USING (VALUES
     (N'P0', N'Palete completa (fluxo direto)',   1200, 800, 1300, 0,   0),
     (N'P1', N'Plataforma + 1 cesto (120x80cm)',  1200, 800,  400, 1, 384),
@@ -646,7 +607,7 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Codigo, novo.Descricao, novo.ComprimentoMm, novo.LarguraMm, novo.AlturaMm, novo.CestosPorPlataforma, novo.CapacidadeUtilLitros);
 GO
 
-MERGE dbo.CM AS alvo
+MERGE dbo.cm AS alvo
 USING (VALUES
     (100, N'Entrada por compra'),
     (110, N'Entrada por devolução de cliente'),
@@ -660,111 +621,11 @@ WHEN NOT MATCHED THEN
     INSERT (Id, Descricao) VALUES (novo.Id, novo.Descricao);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.RegrasMissao WHERE Chave = N'default')
+IF NOT EXISTS (SELECT 1 FROM dbo.regrasmissao WHERE Chave = N'default')
 BEGIN
-    INSERT INTO dbo.RegrasMissao (Chave, MaxLinhasPorMissao, MaxPlataformasPorMissao, CriterioAgrupamento, CriterioOrdenacao)
+    INSERT INTO dbo.regrasmissao (Chave, MaxLinhasPorMissao, MaxPlataformasPorMissao, CriterioAgrupamento, CriterioOrdenacao)
     VALUES (N'default', 20, 4, N'Zona', N'Localizacao');
 END
-GO
-
--- Artigos de exemplo (dados mestre — RF-ENT-03). Dimensões da caixa em
--- cm; usadas pela cubicagem (Anexo A.1) para tipificar a ordem que os
--- reúne. Valores ilustrativos, não confirmados com o cliente.
-MERGE dbo.Artigos AS alvo
-USING (VALUES
-    (N'SKU-1001', N'5601234567890', N'Parafuso M6x20 (caixa 100un)',  100, 30.0, 20.0, 15.0, 4.500, N'Pesado', 40),
-    (N'SKU-2044', N'5601234500021', N'Luvas de proteção tamanho L',    50, 40.0, 30.0, 25.0, 3.000, N'Leve',   20),
-    (N'SKU-3390', N'5601234511119', N'Fita adesiva 48mm',              24, 25.0, 25.0, 20.0, 2.200, N'Leve',   30)
-) AS novo (Sku, Ean, Descricao, UnidadesPorCaixa, ComprimentoCaixaCm, LarguraCaixaCm, AlturaCaixaCm, PesoUnitarioKg, ClasseEmpilhamento, CaixasPorPaleteCompleta)
-ON alvo.Sku = novo.Sku
-WHEN MATCHED THEN
-    UPDATE SET Ean = novo.Ean, Descricao = novo.Descricao, UnidadesPorCaixa = novo.UnidadesPorCaixa,
-        ComprimentoCaixaCm = novo.ComprimentoCaixaCm, LarguraCaixaCm = novo.LarguraCaixaCm, AlturaCaixaCm = novo.AlturaCaixaCm,
-        PesoUnitarioKg = novo.PesoUnitarioKg, ClasseEmpilhamento = novo.ClasseEmpilhamento, CaixasPorPaleteCompleta = novo.CaixasPorPaleteCompleta
-WHEN NOT MATCHED THEN
-    INSERT (Sku, Ean, Descricao, UnidadesPorCaixa, ComprimentoCaixaCm, LarguraCaixaCm, AlturaCaixaCm, PesoUnitarioKg, ClasseEmpilhamento, CaixasPorPaleteCompleta)
-    VALUES (novo.Sku, novo.Ean, novo.Descricao, novo.UnidadesPorCaixa, novo.ComprimentoCaixaCm, novo.LarguraCaixaCm, novo.AlturaCaixaCm, novo.PesoUnitarioKg, novo.ClasseEmpilhamento, novo.CaixasPorPaleteCompleta);
-GO
-
--- Stock de exemplo por alvéolo (SA) — RF-PIC: o operador escolhe o
--- alvéolo onde está de entre os que têm stock do artigo, na zona onde
--- se encontra (ver PickingEndpoints, endpoint /alveolos). SKU-1001 tem
--- stock em dois alvéolos da mesma zona (zona-a) de propósito, para o
--- ecrã mostrar mesmo uma escolha real. Sem WHEN MATCHED/UPDATE (ao
--- contrário dos MERGE acima): isto é dado "vivo" que o próprio picking
--- vai decrementando (como Plataformas/MISSAO mais abaixo) — corrida
--- outra vez, não pode repor o stock ao valor inicial por cima do que
--- já foi picado.
-IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-1001' AND AlveoloId = N'alv-a0103')
-    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-1001', N'alv-a0103', 15);
-IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-1001' AND AlveoloId = N'alv-a0211')
-    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-1001', N'alv-a0211', 5);
-IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-2044' AND AlveoloId = N'alv-a0211')
-    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-2044', N'alv-a0211', 10);
-IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-3390' AND AlveoloId = N'alv-b0402')
-    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-3390', N'alv-b0402', 12);
-GO
-
--- Ordem de preparação de exemplo — simula o que chegaria já composta
--- de outro software (cliente/data/morada e os PS que a compõem já
--- decididos lá), tipificada e despachada, com a plataforma e a missão
--- de picking correspondentes — para que o `pda` tenha sempre uma
--- missão real para executar assim que a BD é criada.
-IF NOT EXISTS (SELECT 1 FROM dbo.OrdensPreparacao WHERE Id = N'op-0001')
-BEGIN
-    INSERT INTO dbo.OrdensPreparacao (Id, Cliente, DataEntrega, MoradaEntrega, Estado, AlturaPaleteCm)
-    VALUES (N'op-0001', N'Cliente de exemplo, Lda.', DATEADD(DAY, 2, CAST(SYSUTCDATETIME() AS DATE)), N'Rua Exemplo 123, Porto', N'Despachada', 140);
-END
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.OrdensSeparacao WHERE Id = N'ps-0001')
-BEGIN
-    INSERT INTO dbo.OrdensSeparacao (Id, OrdemPreparacaoId, NumeroDocumento, Origem, Canal)
-    VALUES (N'ps-0001', N'op-0001', N'PS-2026-0001', N'PHC', N'B2B');
-END
-GO
-
-MERGE dbo.OrdensSeparacaoLinhas AS alvo
-USING (VALUES
-    (N'ps-linha-1', N'ps-0001', N'SKU-1001', 3, N'alv-a0103'),
-    (N'ps-linha-2', N'ps-0001', N'SKU-2044', 2, N'alv-a0211'),
-    (N'ps-linha-3', N'ps-0001', N'SKU-3390', 5, N'alv-b0402')
-) AS novo (Id, OrdemSeparacaoId, Sku, Quantidade, AlveoloId)
-ON alvo.Id = novo.Id
-WHEN NOT MATCHED THEN
-    INSERT (Id, OrdemSeparacaoId, Sku, Quantidade, AlveoloId)
-    VALUES (novo.Id, novo.OrdemSeparacaoId, novo.Sku, novo.Quantidade, novo.AlveoloId);
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.Plataformas WHERE Id = N'plat-0001')
-BEGIN
-    INSERT INTO dbo.Plataformas (Id, Codigo, OrdemPreparacaoId, TipoPlataformaCodigo, IndiceCamada, ClasseCamada, Estado)
-    VALUES (N'plat-0001', N'PLT-0001', N'op-0001', N'P2', 1, N'Leve', N'EmPicking');
-END
-GO
-
-MERGE dbo.MISSAO AS alvo
-USING (VALUES
-    (N'missao-m0142', N'M-0142', N'Picking', N'zona-a', N'plat-0001', N'us-001', N'ter-001', N'Atribuida')
-) AS novo (Id, Codigo, CentroTrabalho, ZonaId, PlataformaId, UtilizadorId, TerminalId, Estado)
-ON alvo.Id = novo.Id
-WHEN NOT MATCHED THEN
-    INSERT (Id, Codigo, CentroTrabalho, ZonaId, PlataformaId, UtilizadorId, TerminalId, Estado, AtribuidaEm)
-    VALUES (novo.Id, novo.Codigo, novo.CentroTrabalho, novo.ZonaId, novo.PlataformaId, novo.UtilizadorId, novo.TerminalId, novo.Estado, SYSUTCDATETIME());
-GO
-
-MERGE dbo.MissaoLinhas AS alvo
-USING (VALUES
-    (N'task-1', N'missao-m0142', N'SKU-1001', N'Parafuso M6x20 (caixa 100un)',  N'5601234567890', N'alv-a0103', N'PLT-0001', N'P2', 3),
-    (N'task-2', N'missao-m0142', N'SKU-2044', N'Luvas de proteção tamanho L',   N'5601234500021', N'alv-a0211', N'PLT-0001', N'P2', 2),
-    (N'task-3', N'missao-m0142', N'SKU-3390', N'Fita adesiva 48mm',             N'5601234511119', N'alv-b0402', N'PLT-0001', N'P2', 5)
-) AS novo (Id, MissaoId, Sku, Descricao, CodigoBarras, AlveoloId, Plataforma, TipoPlataformaCodigo, QuantidadeAlvo)
-ON alvo.Id = novo.Id
-WHEN MATCHED THEN
-    UPDATE SET Descricao = novo.Descricao, CodigoBarras = novo.CodigoBarras
-WHEN NOT MATCHED THEN
-    INSERT (Id, MissaoId, Sku, Descricao, CodigoBarras, AlveoloId, Plataforma, TipoPlataformaCodigo, QuantidadeAlvo)
-    VALUES (novo.Id, novo.MissaoId, novo.Sku, novo.Descricao, novo.CodigoBarras, novo.AlveoloId, novo.Plataforma, novo.TipoPlataformaCodigo, novo.QuantidadeAlvo);
 GO
 
 -------------------------------------------------------------------------
@@ -774,9 +635,9 @@ GO
 --     fim de 3-6 meses, tal como discutido com o cliente.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Celulas' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'celulas' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.Celulas
+    CREATE TABLE dbo.celulas
     (
         Id                       NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Codigo                   NVARCHAR(30)  NOT NULL,
@@ -796,38 +657,38 @@ GO
 --     existência da coluna, para poder correr outra vez em segurança.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'DataPlaneada')
-    ALTER TABLE dbo.MISSAO ADD DataPlaneada DATE NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.missao') AND name = N'DataPlaneada')
+    ALTER TABLE dbo.missao ADD DataPlaneada DATE NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'CelulaId')
-    ALTER TABLE dbo.MISSAO ADD CelulaId NVARCHAR(50) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.missao') AND name = N'CelulaId')
+    ALTER TABLE dbo.missao ADD CelulaId NVARCHAR(50) NULL;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MISSAO_Celula')
-    ALTER TABLE dbo.MISSAO ADD CONSTRAINT FK_MISSAO_Celula FOREIGN KEY (CelulaId) REFERENCES dbo.Celulas (Id);
+    ALTER TABLE dbo.missao ADD CONSTRAINT FK_MISSAO_Celula FOREIGN KEY (CelulaId) REFERENCES dbo.celulas (Id);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensPreparacao') AND name = N'Urgente')
-    ALTER TABLE dbo.OrdensPreparacao ADD Urgente BIT NOT NULL DEFAULT (0);
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'Urgente')
+    ALTER TABLE dbo.ordenspreparacao ADD Urgente BIT NOT NULL DEFAULT (0);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensPreparacao') AND name = N'DataLimite')
-    ALTER TABLE dbo.OrdensPreparacao ADD DataLimite DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'DataLimite')
+    ALTER TABLE dbo.ordenspreparacao ADD DataLimite DATETIME2 NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.SL') AND name = N'Motivo')
-    ALTER TABLE dbo.SL ADD Motivo NVARCHAR(50) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.sl') AND name = N'Motivo')
+    ALTER TABLE dbo.sl ADD Motivo NVARCHAR(50) NULL;
 GO
 
 -------------------------------------------------------------------------
 -- 23. Seed — Celulas de exemplo.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM dbo.Celulas WHERE Id = N'celula-1')
-    INSERT INTO dbo.Celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-1', N'CELULA-1', N'Célula 1', 500);
-IF NOT EXISTS (SELECT 1 FROM dbo.Celulas WHERE Id = N'celula-2')
-    INSERT INTO dbo.Celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-2', N'CELULA-2', N'Célula 2', 500);
+IF NOT EXISTS (SELECT 1 FROM dbo.celulas WHERE Id = N'celula-1')
+    INSERT INTO dbo.celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-1', N'CELULA-1', N'Célula 1', 500);
+IF NOT EXISTS (SELECT 1 FROM dbo.celulas WHERE Id = N'celula-2')
+    INSERT INTO dbo.celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-2', N'CELULA-2', N'Célula 2', 500);
 GO
 
 -------------------------------------------------------------------------
@@ -837,23 +698,23 @@ GO
 --     para o resto do gate de montagem.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'PlataformaCestos' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'plataformacestos' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.PlataformaCestos
+    CREATE TABLE dbo.plataformacestos
     (
         Id             NVARCHAR(50)  NOT NULL PRIMARY KEY,
         PlataformaId   NVARCHAR(50)  NOT NULL,
         MatriculaCesto NVARCHAR(50)  NOT NULL,
         CriadoEm       DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_PlataformaCestos_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
+        CONSTRAINT FK_PlataformaCestos_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.plataformas (Id),
         CONSTRAINT UQ_PlataformaCestos_Matricula UNIQUE (PlataformaId, MatriculaCesto)
     );
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PlataformaCestos_PlataformaId' AND object_id = OBJECT_ID(N'dbo.PlataformaCestos'))
-    CREATE INDEX IX_PlataformaCestos_PlataformaId ON dbo.PlataformaCestos (PlataformaId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PlataformaCestos_PlataformaId' AND object_id = OBJECT_ID(N'dbo.plataformacestos'))
+    CREATE INDEX IX_PlataformaCestos_PlataformaId ON dbo.plataformacestos (PlataformaId);
 GO
 
 -------------------------------------------------------------------------
@@ -864,20 +725,20 @@ GO
 --     seguintes só confirmam que é a mesma (ver PickingEndpoints).
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Plataformas') AND name = N'MatriculaPalete')
-    ALTER TABLE dbo.Plataformas ADD MatriculaPalete NVARCHAR(50) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.plataformas') AND name = N'MatriculaPalete')
+    ALTER TABLE dbo.plataformas ADD MatriculaPalete NVARCHAR(50) NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Plataformas') AND name = N'MontadaEm')
-    ALTER TABLE dbo.Plataformas ADD MontadaEm DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.plataformas') AND name = N'MontadaEm')
+    ALTER TABLE dbo.plataformas ADD MontadaEm DATETIME2 NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'PlataformaConfirmada')
-    ALTER TABLE dbo.MISSAO ADD PlataformaConfirmada BIT NOT NULL DEFAULT (0);
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.missao') AND name = N'PlataformaConfirmada')
+    ALTER TABLE dbo.missao ADD PlataformaConfirmada BIT NOT NULL DEFAULT (0);
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'PlataformaConfirmadaEm')
-    ALTER TABLE dbo.MISSAO ADD PlataformaConfirmadaEm DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.missao') AND name = N'PlataformaConfirmadaEm')
+    ALTER TABLE dbo.missao ADD PlataformaConfirmadaEm DATETIME2 NULL;
 GO
 
 -------------------------------------------------------------------------
@@ -887,29 +748,21 @@ GO
 --     de picking, em vez de só o Codigo em texto livre.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Tipo')
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.alv') AND name = N'Tipo')
     -- Picking | Reserva | Deposito | Buffer
-    ALTER TABLE dbo.ALV ADD Tipo NVARCHAR(20) NOT NULL DEFAULT (N'Picking');
+    ALTER TABLE dbo.alv ADD Tipo NVARCHAR(20) NOT NULL DEFAULT (N'Picking');
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Corredor')
-    ALTER TABLE dbo.ALV ADD Corredor NVARCHAR(10) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.alv') AND name = N'Corredor')
+    ALTER TABLE dbo.alv ADD Corredor NVARCHAR(10) NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Coluna')
-    ALTER TABLE dbo.ALV ADD Coluna INT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.alv') AND name = N'Coluna')
+    ALTER TABLE dbo.alv ADD Coluna INT NULL;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ALV') AND name = N'Nivel')
-    ALTER TABLE dbo.ALV ADD Nivel INT NULL;
-GO
-
--- Backfill dos alvéolos de exemplo (secção 20) — corredor/coluna/nível
--- extraídos do próprio Codigo ("A-01-03" = corredor A, coluna 1, nível
--- 3); dados reais do cliente ainda por carregar.
-UPDATE dbo.ALV SET Corredor = N'A', Coluna = 1, Nivel = 3  WHERE Id = N'alv-a0103' AND Corredor IS NULL;
-UPDATE dbo.ALV SET Corredor = N'A', Coluna = 2, Nivel = 11 WHERE Id = N'alv-a0211' AND Corredor IS NULL;
-UPDATE dbo.ALV SET Corredor = N'B', Coluna = 4, Nivel = 2  WHERE Id = N'alv-b0402' AND Corredor IS NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.alv') AND name = N'Nivel')
+    ALTER TABLE dbo.alv ADD Nivel INT NULL;
 GO
 
 -------------------------------------------------------------------------
@@ -922,9 +775,9 @@ GO
 --     ainda não há um fluxo de pré-registo de equipamento à parte.
 -------------------------------------------------------------------------
 
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'CestoInstancias' AND schema_id = SCHEMA_ID(N'dbo'))
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'cestoinstancias' AND schema_id = SCHEMA_ID(N'dbo'))
 BEGIN
-    CREATE TABLE dbo.CestoInstancias
+    CREATE TABLE dbo.cestoinstancias
     (
         Id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,
         Matricula          NVARCHAR(50)  NOT NULL UNIQUE,
@@ -934,8 +787,8 @@ BEGIN
         LocalizacaoAtualId NVARCHAR(50)  NULL,
         CriadoEm           DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT FK_CestoInstancias_Tipo FOREIGN KEY (TipoCestoId) REFERENCES dbo.CESTOS (Id),
-        CONSTRAINT FK_CestoInstancias_Localizacao FOREIGN KEY (LocalizacaoAtualId) REFERENCES dbo.ALV (Id)
+        CONSTRAINT FK_CestoInstancias_Tipo FOREIGN KEY (TipoCestoId) REFERENCES dbo.cestos (Id),
+        CONSTRAINT FK_CestoInstancias_Localizacao FOREIGN KEY (LocalizacaoAtualId) REFERENCES dbo.alv (Id)
     );
 END
 GO

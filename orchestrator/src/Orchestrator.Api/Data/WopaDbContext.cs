@@ -38,50 +38,50 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
     {
         modelBuilder.Entity<ZonaEntity>(e =>
         {
-            e.ToTable("Zonas");
+            e.ToTable("zonas");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<ModuloEntity>(e =>
         {
-            e.ToTable("Modulos");
+            e.ToTable("modulos");
             e.HasKey(x => x.Slug);
         });
 
         modelBuilder.Entity<TerminalEntity>(e =>
         {
-            e.ToTable("TER");
+            e.ToTable("ter");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<UtilizadorEntity>(e =>
         {
-            e.ToTable("US");
+            e.ToTable("us");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<AlveoloEntity>(e =>
         {
-            e.ToTable("ALV");
+            e.ToTable("alv");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Zona).WithMany().HasForeignKey(x => x.ZonaId);
         });
 
         modelBuilder.Entity<CestoEntity>(e =>
         {
-            e.ToTable("CESTOS");
+            e.ToTable("cestos");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<TipoPlataformaEntity>(e =>
         {
-            e.ToTable("TiposPlataforma");
+            e.ToTable("tiposplataforma");
             e.HasKey(x => x.Codigo);
         });
 
         modelBuilder.Entity<CodigoMovimentoEntity>(e =>
         {
-            e.ToTable("CM");
+            e.ToTable("cm");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever();
             // Tipo é coluna calculada/persistida na BD — só de leitura por aqui.
@@ -90,7 +90,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<RegrasMissao>(e =>
         {
-            e.ToTable("RegrasMissao");
+            e.ToTable("regrasmissao");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Chave).IsUnique();
             e.Property(x => x.CriterioAgrupamento).HasConversion<string>().HasMaxLength(30);
@@ -99,7 +99,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<OrdemSeparacaoEntity>(e =>
         {
-            e.ToTable("OrdensSeparacao");
+            e.ToTable("ordensseparacao");
             e.HasKey(x => x.Id);
             e.HasMany(x => x.Linhas).WithOne().HasForeignKey(x => x.OrdemSeparacaoId);
             e.HasOne<OrdemPreparacaoEntity>().WithMany(x => x.Ps).HasForeignKey(x => x.OrdemPreparacaoId);
@@ -107,7 +107,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<OrdemSeparacaoLinhaEntity>(e =>
         {
-            e.ToTable("OrdensSeparacaoLinhas");
+            e.ToTable("ordensseparacaolinhas");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Alveolo).WithMany().HasForeignKey(x => x.AlveoloId);
             // Sem isto, o EF não sabe que PlataformaId depende de
@@ -119,19 +119,19 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<ArtigoEntity>(e =>
         {
-            e.ToTable("Artigos");
+            e.ToTable("artigos");
             e.HasKey(x => x.Sku);
         });
 
         modelBuilder.Entity<OrdemPreparacaoEntity>(e =>
         {
-            e.ToTable("OrdensPreparacao");
+            e.ToTable("ordenspreparacao");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<PlataformaEntity>(e =>
         {
-            e.ToTable("Plataformas");
+            e.ToTable("plataformas");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.TipoPlataforma).WithMany().HasForeignKey(x => x.TipoPlataformaCodigo);
             e.HasOne<OrdemPreparacaoEntity>().WithMany(x => x.Plataformas).HasForeignKey(x => x.OrdemPreparacaoId);
@@ -139,7 +139,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<MissaoEntity>(e =>
         {
-            e.ToTable("MISSAO");
+            e.ToTable("missao");
             e.HasKey(x => x.Id);
             e.HasMany(x => x.Linhas).WithOne().HasForeignKey(x => x.MissaoId);
             e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
@@ -148,7 +148,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<MissaoLinhaEntity>(e =>
         {
-            e.ToTable("MissaoLinhas");
+            e.ToTable("missaolinhas");
             e.HasKey(x => x.Id);
             e.HasOne(x => x.Alveolo).WithMany().HasForeignKey(x => x.AlveoloId);
             e.Property(x => x.Estado).HasConversion<string>().HasMaxLength(20);
@@ -156,39 +156,39 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
 
         modelBuilder.Entity<OperacaoProcessadaEntity>(e =>
         {
-            e.ToTable("OperacoesProcessadas");
+            e.ToTable("operacoesprocessadas");
             e.HasKey(x => x.OperacaoId);
         });
 
         modelBuilder.Entity<EstoqueAlveoloEntity>(e =>
         {
-            e.ToTable("SA");
+            e.ToTable("sa");
             e.HasKey(x => new { x.Sku, x.AlveoloId });
             e.HasOne(x => x.Alveolo).WithMany().HasForeignKey(x => x.AlveoloId);
         });
 
         modelBuilder.Entity<MovimentoStockEntity>(e =>
         {
-            e.ToTable("SL");
+            e.ToTable("sl");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<CelulaEntity>(e =>
         {
-            e.ToTable("Celulas");
+            e.ToTable("celulas");
             e.HasKey(x => x.Id);
         });
 
         modelBuilder.Entity<PlataformaCestoEntity>(e =>
         {
-            e.ToTable("PlataformaCestos");
+            e.ToTable("plataformacestos");
             e.HasKey(x => x.Id);
             e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
         });
 
         modelBuilder.Entity<CestoInstanciaEntity>(e =>
         {
-            e.ToTable("CestoInstancias");
+            e.ToTable("cestoinstancias");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Matricula).IsUnique();
             e.HasOne<CestoEntity>().WithMany().HasForeignKey(x => x.TipoCestoId);

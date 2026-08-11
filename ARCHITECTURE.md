@@ -1717,6 +1717,60 @@ começar pela Fase 1 e crescer para a Fase 2.
   (`LocalizacaoAtualId` preenchido) depende do `packing`, que continua
   deliberadamente por fazer.
 
+### ADR-031 — Todas as tabelas em minúsculas; fim dos dados de exemplo no `schema.sql`; script de reset
+
+- **Contexto:** a caminho do primeiro teste a sério num terminal
+  Android com leitura de código de barras, com dados reais a chegar do
+  cliente a seguir — pedido explícito para (1) confirmar que não
+  ficaram tabelas criadas e nunca usadas, (2) uniformizar todos os
+  nomes de tabela em minúsculas, incluindo as 8 com código pedido pelo
+  cliente (`TER`/`US`/`ALV`/`CESTOS`/`MISSAO`/`SL`/`SA`/`CM` — decisão
+  explícita de ir além do que o ADR-003 tinha registado como "nomes
+  mantidos exatamente assim"; o código continua o mesmo, só a
+  capitalização muda) e (3) parar de recriar dados fictícios sempre
+  que o `schema.sql` corre, para a BD ficar mesmo vazia à espera dos
+  dados reais.
+- **Auditoria de tabelas por usar:** todas as 22 tabelas do schema têm
+  entidade EF Core mapeada e são lidas/escritas por pelo menos um
+  endpoint — incluindo `RegrasMissao` (config via
+  `Config/RegrasMissaoEndpoints.cs`, só o motor de missões é que ainda
+  não a consulta, ver secção 8) e `TER`/`US`/`CM` (sem endpoint próprio
+  ainda, mas são as 3 tabelas de código pedido pelo cliente com FKs
+  reais de outras tabelas — scaffolding intencional para login/
+  auditoria futuros, ADR-013, não código morto). Nenhuma tabela foi
+  apagada por estar por usar.
+- **Todas as tabelas passam a minúsculas** (`ALV`→`alv`,
+  `OrdensPreparacao`→`ordenspreparacao`, etc.) — nomes de índice/
+  constraint (`FK_ALV_Zona`, `IX_MissaoLinhas_MissaoId`, ...) mantidos
+  como estavam, só os nomes de tabela mudaram. Como a colação por
+  omissão do SQL Server é case-insensitive, isto não muda nenhum
+  comportamento de query — é só convenção de escrita. `WopaDbContext`
+  (`ToTable(...)`) e `seed-realistic.sql` atualizados a condizer.
+- **`schema.sql` deixa de semear dados de negócio de exemplo**
+  (zonas, alvéolos, artigos, ordem/PS/plataforma/missão fictícios,
+  incluindo o `SA` de stock associado) — mantém-se só o que o próprio
+  WOPA precisa para funcionar: `Modulos`, `TiposPlataforma`, `CESTOS`
+  (tipo/spec), `CM`, `RegrasMissao` por omissão. A partir de agora,
+  voltar a correr `schema.sql` numa BD já com dados reais não traz de
+  volta nenhum registo fictício.
+- **`reset-database.sql` (novo, script separado):** apaga as 22
+  tabelas por completo (`DROP TABLE IF EXISTS`, ordem que respeita as
+  foreign keys), para correr uma única vez antes de recriar com
+  `schema.sql`. Deliberadamente à parte do `schema.sql` — que continua
+  seguro para correr a qualquer momento (ADR-017/021) — precisamente
+  para este tipo de operação destrutiva nunca acontecer sem ser
+  pedida explicitamente.
+- **`seed-realistic.sql` (dados quase-reais, ADR-019) continua a
+  existir e a funcionar** (nomes de tabela também atualizados), mas
+  deixa de fazer sentido correr no fluxo atual — é para dados reais do
+  cliente a partir de agora, não para os ~5.548 artigos ilustrativos.
+  Não usar o parâmetro de carregar "dados quase-reais" do
+  `install-wopa.ps1`/workflow do GitHub Actions ao instalar depois
+  deste reset.
+- **Como aplicar no servidor:** `sqlcmd -f 65001 -i reset-database.sql`
+  seguido de `sqlcmd -f 65001 -i schema.sql` (a flag `-f 65001`
+  continua obrigatória, ver ADR-021 — mojibake).
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para
