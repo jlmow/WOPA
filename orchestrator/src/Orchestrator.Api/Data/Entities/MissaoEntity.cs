@@ -22,6 +22,10 @@ public class MissaoEntity
     public DateOnly? DataPlaneada { get; set; }
     public string? CelulaId { get; set; }
 
+    /// <summary>Gate de montagem (ADR-029) — true depois de montar/confirmar a plataforma desta missão.</summary>
+    public bool PlataformaConfirmada { get; set; }
+    public DateTime? PlataformaConfirmadaEm { get; set; }
+
     /// <summary>Picking | Packing | Transporte | Abastecimento | Reposicao | P0.</summary>
     public string CentroTrabalho { get; set; } = "Picking";
     public string? PlataformaId { get; set; }

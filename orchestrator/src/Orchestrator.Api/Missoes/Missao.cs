@@ -6,6 +6,7 @@ public record MissaoResumo(
     string CentroTrabalho,
     string? ZonaId,
     string? PlataformaCodigo,
+    bool PlataformaConfirmada,
     string? UtilizadorId,
     string Estado,
     string? MotivoPausa,

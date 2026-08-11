@@ -1624,6 +1624,63 @@ começar pela Fase 1 e crescer para a Fase 2.
   até ao 10º item.
 - **`controller`:** ainda por fazer — próximo passo.
 
+### ADR-029 — Gate de montagem no picking: não há picking de artigos sem plataforma indicada
+
+- **Contexto:** notas do cliente vindas do armazém a sério — uma
+  plataforma é montada (palete + cestos) antes do picking de artigos, e
+  não depois. Um operador na Zona A pode receber uma missão cuja
+  plataforma já vem "agarrada" de uma zona anterior (a mesma Ordem foi
+  tocada por vários zonas/missões em sequência) — nesse caso só confirma
+  a plataforma; só a **primeira** zona a tocar numa Ordem é que monta de
+  raiz.
+- **Regra implementada:** `POST /api/picking/mission/{id}/montagem`
+  (`matriculaPalete`, `matriculasCestos[]`). Se a `Plataforma.MontadaEm`
+  ainda é nula, é a primeira zona — a matrícula da palete e as N
+  matrículas de cesto (N = `TiposPlataforma.CestosPorPlataforma`, 0 para
+  P0) ficam gravadas (`Plataformas.MatriculaPalete`/`MontadaEm`, tabela
+  nova `PlataformaCestos`). Se já está montada, é confirmação leve: só
+  valida que a palete e os cestos lidos correspondem aos já gravados,
+  sem os poder trocar por aqui. Nos dois casos, o resultado marca
+  `MISSAO.PlataformaConfirmada = true` — **por missão**, não por
+  plataforma, porque cada zona/missão precisa da sua própria confirmação
+  mesmo que a plataforma já esteja montada. `GET /api/picking/tasks/{id}
+  /scan` e `/pick` recusam (409) enquanto isto não estiver feito;
+  `GET /api/picking/mission` já devolve o que falta (`montagem`, com
+  `primeiraMontagem` a distinguir os dois ecrãs no `pda`).
+- **P0 tratado como o resto:** `TiposPlataforma` já tinha uma linha P0
+  com `CestosPorPlataforma = 0` — a mesma regra serve sem caso especial:
+  só pede a matrícula da palete, nenhum cesto. Isto está em tensão com o
+  texto do ADR-017 ("P0 ... fora do circuito de corredores, executado
+  pelo empilhador de abastecimento") — as notas mais recentes do cliente
+  descrevem P0 a passar pelo mesmo gate de picking, "já no alvéolo para
+  picking". Resolvido aqui do lado seguro (P0 só pede palete, nunca
+  bloqueia por cestos que não existem), mas fica por confirmar com o
+  cliente se isto é mesmo o fluxo real do P0 ou uma mistura de dois
+  conceitos — ver Em aberto.
+- **Cesto ainda não é uma tabela de instâncias com matrícula própria**
+  (`CESTOS` continua só tipo/spec, uma linha "cesto-standard") — a
+  matrícula de cesto lida no gate fica como texto solto em
+  `PlataformaCestos.MatriculaCesto`, sem FK para nenhuma tabela de
+  cestos físicos. Suficiente para validar "é a mesma plataforma" entre
+  zonas, mas não persegue o cesto como património reutilizável — isso
+  cruza com a sugestão de melhorias ao `ALV` (ver mensagem em separado).
+- **`pda`:** ecrã novo `MontarPlataforma` antes de qualquer leitura de
+  artigo — pede a matrícula da palete e, se o tipo tiver cestos, lê-as
+  uma a uma com contador N/M. Sempre em direto (como a lista de
+  alvéolos com stock do ADR-022) — a validação de "é a mesma plataforma"
+  só o servidor pode fazer, por isso não entra na fila offline do
+  ADR-007.
+- **`controller`:** tabela de Missões mostra "Por montar" junto da
+  plataforma quando há gate por cumprir, para o supervisor ver de
+  imediato onde está parada uma missão.
+- **Deliberadamente fora de alcance:** `packing` (o próprio cliente
+  pediu para ficar só na ideia por agora — não há libertação de
+  plataforma/cestos implementada); qualquer scan por artigo do cesto de
+  destino durante o picking ("não posso misturar encomendas no mesmo
+  cesto") — isso é uma segunda regra, sobre `MissaoLinhas.CestoId`/
+  `CestosNecessarios` (colunas que já existem no schema, por popular),
+  não sobre este gate de entrada.
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para
@@ -1635,6 +1692,18 @@ começar pela Fase 1 e crescer para a Fase 2.
   modelo de KPIs (produtividade + qualidade + serviço, não só
   velocidade); `packing` (double-check/consolidação obrigatório) —
   scaffold nenhum ainda, por pedido explícito do cliente.
+- **P0 no gate de montagem (ADR-029): confirmar com o cliente.** Fica em
+  tensão com o ADR-017 ("P0 fora do circuito de corredores"). Por
+  confirmar se P0 passa mesmo pelo `pda`/gate de montagem tal como
+  descrito nas notas mais recentes, ou se essas notas descreviam outro
+  ponto do fluxo (empilhador/reserva) sendo o nome "P0" usado de forma
+  solta.
+- **Cesto como instância com matrícula própria (ADR-029/ALV):** hoje só
+  existe como texto solto em `PlataformaCestos`. Decidir se vale a pena
+  uma tabela `Cestos` de instância (matrícula, tipo, estado
+  livre/em-uso, última plataforma) — ligaria a este gate, ao
+  `MissaoLinhas.CestoId` já existente mas por usar, e à sugestão de
+  melhorias ao `ALV`.
 - **Origem do stock real por alvéolo (ADR-022):** `SA`/`SL` calculam-se
   sozinhos a partir dos movimentos (decisão do cliente), mas falta o
   import inicial — hoje só os 3 alvéolos de exemplo têm `SA`, nada

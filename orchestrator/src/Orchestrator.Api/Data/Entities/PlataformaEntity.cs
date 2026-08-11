@@ -19,5 +19,9 @@ public class PlataformaEntity
     public string Estado { get; set; } = "EmPicking";
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Gate de montagem (ADR-029) — preenchidos na primeira zona que monta a plataforma.</summary>
+    public string? MatriculaPalete { get; set; }
+    public DateTime? MontadaEm { get; set; }
+
     public TipoPlataformaEntity? TipoPlataforma { get; set; }
 }

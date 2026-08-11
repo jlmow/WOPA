@@ -35,4 +35,18 @@ export const pickingApi = {
       method: "POST",
       body: JSON.stringify({ operacaoId }),
     }),
+
+  // Gate de montagem (ADR-029) — sempre em direto, como os alvéolos: só o
+  // servidor sabe se esta plataforma já foi montada noutra zona e quais
+  // são as matrículas certas para validar a confirmação.
+  montar: (
+    missaoId: string,
+    matriculaPalete: string,
+    matriculasCestos: string[],
+    operacaoId: string,
+  ): Promise<{ confirmada: boolean }> =>
+    apiFetch<{ confirmada: boolean }>(`/api/picking/mission/${missaoId}/montagem`, {
+      method: "POST",
+      body: JSON.stringify({ matriculaPalete, matriculasCestos, operacaoId }),
+    }),
 };

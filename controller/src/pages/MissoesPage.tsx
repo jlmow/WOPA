@@ -91,7 +91,14 @@ export function MissoesPage() {
             <tr key={m.id} data-testid={`missao-${m.id}`}>
               <td>{m.codigo}</td>
               <td>{m.centroTrabalho}</td>
-              <td>{m.plataformaCodigo ?? "—"}</td>
+              <td>
+                {m.plataformaCodigo ?? "—"}
+                {m.plataformaCodigo && !m.plataformaConfirmada && (
+                  <span className="status-tag status-tag--aviso" data-testid={`plataforma-por-montar-${m.id}`}>
+                    Por montar
+                  </span>
+                )}
+              </td>
               <td>
                 {m.linhasConcluidas}/{m.totalLinhas}
               </td>

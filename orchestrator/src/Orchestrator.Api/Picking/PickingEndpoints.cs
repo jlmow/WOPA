@@ -16,7 +16,14 @@ public record PickRequest(string AlveoloId, int Quantidade, string? Motivo = nul
 
 public record ErrorResponse(string Erro);
 
-public record MissionSummary(string Codigo, int TotalLinhas, int LinhasConcluidas);
+// Gate de montagem (ADR-029): PrimeiraMontagem=true -> esta zona monta a
+// plataforma de raiz (palete + N cestos vazios); false -> plataforma já
+// vem montada de outra zona, só é preciso confirmar (mesma palete + cestos).
+public record MontagemInfo(string PlataformaId, string TipoPlataformaCodigo, int CestosNecessarios, bool Confirmada, bool PrimeiraMontagem);
+
+public record MissionSummary(string Id, string Codigo, int TotalLinhas, int LinhasConcluidas, MontagemInfo? Montagem);
+
+public record MontagemRequest(string MatriculaPalete, string[] MatriculasCestos, string? OperacaoId = null);
 
 /// <summary>Um alvéolo com stock do artigo da tarefa, na zona onde o operador está (RF-PIC).</summary>
 public record AlveoloComStock(string AlveoloId, string Codigo, int QuantidadeDisponivel, int SugestaoQuantidade);
@@ -56,9 +63,76 @@ public static class PickingEndpoints
             var total = await db.MissaoLinhas.CountAsync(l => l.MissaoId == missao.Id);
             var concluidas = await db.MissaoLinhas.CountAsync(l =>
                 l.MissaoId == missao.Id && l.Estado == PickingTaskStatus.Concluida);
-            return Results.Ok(new MissionSummary(missao.Codigo, total, concluidas));
+
+            var montagem = await ObterMontagemInfoAsync(db, missao);
+            return Results.Ok(new MissionSummary(missao.Id, missao.Codigo, total, concluidas, montagem));
         })
         .WithName("ObterResumoMissaoPicking");
+
+        // Gate de montagem (ADR-029): sem plataforma indicada não há
+        // picking de artigos. Primeira zona de uma Ordem monta a
+        // plataforma de raiz (palete + N cestos, N vem de TiposPlataforma
+        // -- 0 para P0); zonas seguintes só confirmam a mesma palete e os
+        // mesmos cestos, sem os reler do zero.
+        group.MapPost("/mission/{id}/montagem", async (string id, MontagemRequest request, WopaDbContext db) =>
+        {
+            var missao = await db.Missoes.SingleOrDefaultAsync(m => m.Id == id);
+            if (missao is null) return Results.NotFound();
+
+            // Reenvio (offline/retry): já confirmada, devolve sucesso sem repetir a validação.
+            if (missao.PlataformaConfirmada)
+                return Results.Ok(new { confirmada = true });
+
+            if (missao.PlataformaId is null)
+                return Results.Conflict(new ErrorResponse("Esta missão não tem plataforma associada."));
+
+            var plataforma = await db.Plataformas.SingleAsync(p => p.Id == missao.PlataformaId);
+            var tipo = await db.TiposPlataforma.SingleAsync(t => t.Codigo == plataforma.TipoPlataformaCodigo);
+
+            if (string.IsNullOrWhiteSpace(request.MatriculaPalete))
+                return Results.BadRequest(new ErrorResponse("Matrícula da palete em falta."));
+
+            var cestosLidos = request.MatriculasCestos ?? Array.Empty<string>();
+            if (cestosLidos.Length != tipo.CestosPorPlataforma)
+                return Results.Conflict(new ErrorResponse(
+                    $"São precisos {tipo.CestosPorPlataforma} cesto(s) para {tipo.Codigo} (foram lidos {cestosLidos.Length})."));
+
+            if (plataforma.MontadaEm is null)
+            {
+                // Primeira zona desta Ordem: montagem de raiz.
+                plataforma.MatriculaPalete = request.MatriculaPalete;
+                plataforma.MontadaEm = DateTime.UtcNow;
+                foreach (var matricula in cestosLidos)
+                {
+                    db.PlataformaCestos.Add(new PlataformaCestoEntity
+                    {
+                        Id = Guid.NewGuid().ToString("n"),
+                        PlataformaId = plataforma.Id,
+                        MatriculaCesto = matricula,
+                    });
+                }
+            }
+            else
+            {
+                // Zona seguinte: só confirma que é a mesma plataforma (mesma palete + mesmos cestos).
+                if (!string.Equals(plataforma.MatriculaPalete, request.MatriculaPalete, StringComparison.Ordinal))
+                    return Results.Conflict(new ErrorResponse("Matrícula da palete não corresponde à plataforma desta missão."));
+
+                var matriculasConhecidas = await db.PlataformaCestos
+                    .Where(c => c.PlataformaId == plataforma.Id)
+                    .Select(c => c.MatriculaCesto)
+                    .ToListAsync();
+                if (!cestosLidos.OrderBy(c => c, StringComparer.Ordinal).SequenceEqual(matriculasConhecidas.OrderBy(c => c, StringComparer.Ordinal)))
+                    return Results.Conflict(new ErrorResponse("Os cestos lidos não correspondem aos desta plataforma."));
+            }
+
+            missao.PlataformaConfirmada = true;
+            missao.PlataformaConfirmadaEm = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+            return Results.Ok(new { confirmada = true });
+        })
+        .WithName("MontarOuConfirmarPlataformaPicking");
 
         group.MapGet("/tasks/{id}", async (string id, WopaDbContext db) =>
         {
@@ -85,6 +159,13 @@ public static class PickingEndpoints
             if (task is null)
                 return Results.NotFound();
 
+            var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
+
+            // Gate de montagem (ADR-029): sem plataforma montada/confirmada
+            // não há leitura de artigos.
+            if (missao.PlataformaId is not null && !missao.PlataformaConfirmada)
+                return Results.Conflict(new ErrorResponse("É preciso montar/confirmar a plataforma antes de picar artigos."));
+
             if (task.Estado == PickingTaskStatus.Concluida)
                 return Results.Conflict(new ErrorResponse("Tarefa já concluída."));
 
@@ -100,7 +181,6 @@ public static class PickingEndpoints
 
             // A.13: a primeira leitura de uma missão atribuída marca o
             // início real da execução (distinto de "atribuída").
-            var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
             if (missao.Estado == "Atribuida")
             {
                 missao.Estado = "EmExecucao";
@@ -166,6 +246,10 @@ public static class PickingEndpoints
             var task = await db.MissaoLinhas.Include(l => l.Alveolo).SingleOrDefaultAsync(l => l.Id == id);
             if (task is null) return Results.NotFound();
 
+            var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
+            if (missao.PlataformaId is not null && !missao.PlataformaConfirmada)
+                return Results.Conflict(new ErrorResponse("É preciso montar/confirmar a plataforma antes de picar artigos."));
+
             if (task.Estado == PickingTaskStatus.Concluida)
                 return Results.Conflict(new ErrorResponse("Tarefa já concluída."));
 
@@ -195,7 +279,6 @@ public static class PickingEndpoints
             if (task.Estado == PickingTaskStatus.Pendente)
                 task.Estado = PickingTaskStatus.EmProgresso;
 
-            var missao = await db.Missoes.SingleAsync(m => m.Id == task.MissaoId);
             if (missao.Estado == "Atribuida")
             {
                 missao.Estado = "EmExecucao";
@@ -277,8 +360,18 @@ public static class PickingEndpoints
                 missao.PausadaEm = null;
                 missao.RetomadaEm = null;
                 missao.ConcluidaEm = null;
+                missao.PlataformaConfirmada = false;
+                missao.PlataformaConfirmadaEm = null;
             }
 
+            var plataformas = await db.Plataformas.ToListAsync();
+            foreach (var plataforma in plataformas)
+            {
+                plataforma.MatriculaPalete = null;
+                plataforma.MontadaEm = null;
+            }
+
+            db.PlataformaCestos.RemoveRange(db.PlataformaCestos);
             db.OperacoesProcessadas.RemoveRange(db.OperacoesProcessadas);
             await db.SaveChangesAsync();
 
@@ -312,6 +405,18 @@ public static class PickingEndpoints
         }
 
         return missao;
+    }
+
+    // ADR-029: null quando a missão não tem plataforma associada (nada a
+    // montar/confirmar) — mantém o gate opcional em vez de partir missões
+    // antigas/sem plataforma.
+    private static async Task<MontagemInfo?> ObterMontagemInfoAsync(WopaDbContext db, MissaoEntity missao)
+    {
+        if (missao.PlataformaId is not { } plataformaId) return null;
+
+        var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
+        var tipo = await db.TiposPlataforma.SingleAsync(t => t.Codigo == plataforma.TipoPlataformaCodigo);
+        return new MontagemInfo(plataforma.Id, tipo.Codigo, tipo.CestosPorPlataforma, missao.PlataformaConfirmada, plataforma.MontadaEm is null);
     }
 
     // Opção A (ARCHITECTURE.md ADR-012): a API pública mantém o formato

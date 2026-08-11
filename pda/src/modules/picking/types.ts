@@ -12,10 +12,23 @@ export interface PickingTask {
   estado: PickingTaskStatus;
 }
 
+// Gate de montagem (ADR-029): primeiraMontagem=true -> esta zona monta a
+// plataforma de raiz (palete + N cestos vazios); false -> já vem montada
+// de outra zona, só é preciso confirmar (mesma palete + mesmos cestos).
+export interface MontagemInfo {
+  plataformaId: string;
+  tipoPlataformaCodigo: string;
+  cestosNecessarios: number;
+  confirmada: boolean;
+  primeiraMontagem: boolean;
+}
+
 export interface MissionSummary {
+  id: string;
   codigo: string;
   totalLinhas: number;
   linhasConcluidas: number;
+  montagem: MontagemInfo | null;
 }
 
 export interface AlveoloComStock {

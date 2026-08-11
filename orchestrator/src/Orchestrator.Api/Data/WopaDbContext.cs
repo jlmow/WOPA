@@ -31,6 +31,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
     public DbSet<EstoqueAlveoloEntity> Estoque => Set<EstoqueAlveoloEntity>();
     public DbSet<MovimentoStockEntity> MovimentosStock => Set<MovimentoStockEntity>();
     public DbSet<CelulaEntity> Celulas => Set<CelulaEntity>();
+    public DbSet<PlataformaCestoEntity> PlataformaCestos => Set<PlataformaCestoEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -175,6 +176,13 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
         {
             e.ToTable("Celulas");
             e.HasKey(x => x.Id);
+        });
+
+        modelBuilder.Entity<PlataformaCestoEntity>(e =>
+        {
+            e.ToTable("PlataformaCestos");
+            e.HasKey(x => x.Id);
+            e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
         });
     }
 }

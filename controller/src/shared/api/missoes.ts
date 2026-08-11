@@ -8,6 +8,9 @@ export interface Missao {
   centroTrabalho: string;
   zonaId: string | null;
   plataformaCodigo: string | null;
+  // ADR-029: gate de montagem — false só quando há plataforma associada
+  // e a zona ainda não a montou/confirmou.
+  plataformaConfirmada: boolean;
   utilizadorId: string | null;
   estado: EstadoMissao;
   motivoPausa: string | null;

@@ -118,6 +118,7 @@ public static class MissoesEndpoints
         m.CentroTrabalho,
         m.ZonaId,
         m.PlataformaId is { } pid && codigosPorPlataforma.TryGetValue(pid, out var cod) ? cod : null,
+        m.PlataformaConfirmada,
         m.UtilizadorId,
         m.Estado,
         m.MotivoPausa,

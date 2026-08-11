@@ -830,5 +830,55 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Celulas WHERE Id = N'celula-2')
     INSERT INTO dbo.Celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-2', N'CELULA-2', N'Célula 2', 500);
 GO
 
+-------------------------------------------------------------------------
+-- 24. PlataformaCestos (ADR-029) — matrículas dos cestos montados numa
+--     plataforma (P1/P2/P4). Uma linha por cesto físico associado; P0
+--     nunca tem linhas aqui (CestosPorPlataforma = 0). Ver secção 25
+--     para o resto do gate de montagem.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'PlataformaCestos' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.PlataformaCestos
+    (
+        Id             NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        PlataformaId   NVARCHAR(50)  NOT NULL,
+        MatriculaCesto NVARCHAR(50)  NOT NULL,
+        CriadoEm       DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
+
+        CONSTRAINT FK_PlataformaCestos_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.Plataformas (Id),
+        CONSTRAINT UQ_PlataformaCestos_Matricula UNIQUE (PlataformaId, MatriculaCesto)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PlataformaCestos_PlataformaId' AND object_id = OBJECT_ID(N'dbo.PlataformaCestos'))
+    CREATE INDEX IX_PlataformaCestos_PlataformaId ON dbo.PlataformaCestos (PlataformaId);
+GO
+
+-------------------------------------------------------------------------
+-- 25. Migrações aditivas (ADR-029) — gate de montagem no picking: não é
+--     possível iniciar o picking de artigos de uma missão sem primeiro
+--     indicar a plataforma (palete + cestos, conforme o tipo). A
+--     primeira zona de uma Ordem monta a plataforma de raiz; zonas
+--     seguintes só confirmam que é a mesma (ver PickingEndpoints).
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Plataformas') AND name = N'MatriculaPalete')
+    ALTER TABLE dbo.Plataformas ADD MatriculaPalete NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Plataformas') AND name = N'MontadaEm')
+    ALTER TABLE dbo.Plataformas ADD MontadaEm DATETIME2 NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'PlataformaConfirmada')
+    ALTER TABLE dbo.MISSAO ADD PlataformaConfirmada BIT NOT NULL DEFAULT (0);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'PlataformaConfirmadaEm')
+    ALTER TABLE dbo.MISSAO ADD PlataformaConfirmadaEm DATETIME2 NULL;
+GO
+
 PRINT 'Base de dados WOPA pronta.';
 GO

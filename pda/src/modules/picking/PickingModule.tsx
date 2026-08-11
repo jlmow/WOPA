@@ -1,20 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import type { PickingTask } from "./types";
+import type { MissionSummary, PickingTask } from "./types";
 import { pickingApi } from "./api";
 import { db } from "./db";
 import { flushOutbox } from "./sync";
 import { TaskList } from "./components/TaskList";
 import { ScanTask } from "./components/ScanTask";
 import { PickAlveolo } from "./components/PickAlveolo";
+import { MontarPlataforma } from "./components/MontarPlataforma";
 import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
 import { useServerConnection } from "../../shared/useServerConnection";
 
 // "picking": depois de um scan válido, passo obrigatório de escolher
 // alvéolo + quantidade (ADR-022) antes de a leitura seguinte ser possível.
-type Vista = "carregando" | "leitura" | "picking" | "lista" | "concluida";
+// "montagem" (ADR-029): gate antes de tudo isto — sem plataforma
+// montada/confirmada não há leitura de artigos.
+type Vista = "carregando" | "montagem" | "leitura" | "picking" | "lista" | "concluida";
 
 const MISSAO_CODIGO_CHAVE = "missaoCodigo";
 
@@ -24,20 +27,47 @@ export function PickingModule() {
   const ligado = useServerConnection();
   const pendentes = useLiveQuery(() => db.outbox.count(), [], 0);
   const [tasks, setTasks] = useState<PickingTask[]>([]);
-  const [missaoCodigo, setMissaoCodigo] = useState<string | null>(null);
+  const [missao, setMissao] = useState<MissionSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [vista, setVista] = useState<Vista>("carregando");
   const [erro, setErro] = useState<string | null>(null);
 
-  function iniciarComLista(lista: PickingTask[], codigo: string) {
-    setTasks(lista);
-    setMissaoCodigo(codigo);
+  function avancarAposGate(lista: PickingTask[]) {
     const primeira = lista.find((t) => t.estado !== "Concluida");
     if (primeira) {
       setSelectedId(primeira.id);
       setVista("leitura");
     } else {
       setVista("concluida");
+    }
+  }
+
+  function iniciarComLista(lista: PickingTask[], missaoAtual: MissionSummary) {
+    setTasks(lista);
+    setMissao(missaoAtual);
+    if (missaoAtual.montagem && !missaoAtual.montagem.confirmada) {
+      setVista("montagem");
+      return;
+    }
+    avancarAposGate(lista);
+  }
+
+  async function handleMontagem(
+    matriculaPalete: string,
+    matriculasCestos: string[],
+  ): Promise<{ ok: true } | { ok: false; erro: string }> {
+    if (!missao) return { ok: false, erro: "Sem missão carregada." };
+    try {
+      await pickingApi.montar(missao.id, matriculaPalete, matriculasCestos, crypto.randomUUID());
+      const missaoConfirmada: MissionSummary = {
+        ...missao,
+        montagem: missao.montagem ? { ...missao.montagem, confirmada: true } : null,
+      };
+      setMissao(missaoConfirmada);
+      avancarAposGate(tasks);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, erro: (err as Error).message || "Não foi possível confirmar a plataforma." };
     }
   }
 
@@ -58,11 +88,11 @@ export function PickingModule() {
       if (cancelado) return;
 
       try {
-        const [lista, missao] = await Promise.all([pickingApi.listTasks(), pickingApi.getMission()]);
+        const [lista, missaoRemota] = await Promise.all([pickingApi.listTasks(), pickingApi.getMission()]);
         if (cancelado) return;
         await db.tasks.bulkPut(lista);
-        await db.meta.put({ chave: MISSAO_CODIGO_CHAVE, valor: missao.codigo });
-        iniciarComLista(lista, missao.codigo);
+        await db.meta.put({ chave: MISSAO_CODIGO_CHAVE, valor: missaoRemota.codigo });
+        iniciarComLista(lista, missaoRemota);
       } catch {
         if (cancelado) return;
         const [localTasks, localMeta] = await Promise.all([
@@ -76,7 +106,17 @@ export function PickingModule() {
           );
           return;
         }
-        iniciarComLista(localTasks, localMeta?.valor ?? "—");
+        // Offline: se já havia tarefas em cache, o gate de montagem já foi
+        // ultrapassado numa sessão anterior online (ver ADR-029) — sem
+        // rede não há como validar/montar a plataforma, por isso não se
+        // repete aqui.
+        iniciarComLista(localTasks, {
+          id: "",
+          codigo: localMeta?.valor ?? "—",
+          totalLinhas: localTasks.length,
+          linhasConcluidas: localTasks.filter((t) => t.estado === "Concluida").length,
+          montagem: null,
+        });
       }
     }
 
@@ -169,7 +209,7 @@ export function PickingModule() {
       <header className="app__header app__header--mission">
         <div className="app__header-row">
           <p className="app__eyebrow">
-            Missão {missaoCodigo ?? "…"} · Zona {zona?.codigo}
+            Missão {missao?.codigo ?? "…"} · Zona {zona?.codigo}
           </p>
           <button className="link-button" onClick={() => navigate("/modulos")} data-testid="voltar-modulos">
             Módulos
@@ -177,7 +217,7 @@ export function PickingModule() {
         </div>
         <h1>Picking</h1>
         <SyncBadge />
-        {total > 0 && (
+        {total > 0 && vista !== "montagem" && (
           <>
             <div className="mission-progress" data-testid="mission-progress">
               <div className="mission-progress__fill" style={{ width: `${progressoPct}%` }} />
@@ -190,6 +230,10 @@ export function PickingModule() {
       </header>
 
       {erro && <p className="scan-screen__message scan-screen__message--erro">{erro}</p>}
+
+      {vista === "montagem" && missao?.montagem && (
+        <MontarPlataforma montagem={missao.montagem} onConfirmar={handleMontagem} />
+      )}
 
       {vista === "concluida" && total > 0 && (
         <div className="mission-complete" data-testid="mission-complete">
