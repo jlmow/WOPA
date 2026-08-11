@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AlveoloComStock, PickingTask } from "../types";
 import { pickingApi } from "../api";
+import { allowKeyboardOnTap, suppressKeyboardOnBlur } from "../../../shared/scannerInput";
 
 interface Props {
   task: PickingTask;
@@ -68,8 +69,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
   }, [task.id]);
 
   // Escolher o alvéolo avança logo o foco para a quantidade (auto-avanço) —
-  // e pré-seleciona o texto para um número novo substituir a sugestão com
-  // um só toque, sem apagar primeiro.
+  // sem abrir o teclado sozinho (só no toque real, ver scannerInput).
   function selecionar(opcao: AlveoloComStock) {
     setSelecionadoId(opcao.alveoloId);
     setQuantidade(opcao.sugestaoQuantidade);
@@ -77,7 +77,6 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
     setErro(null);
     requestAnimationFrame(() => {
       quantidadeRef.current?.focus();
-      quantidadeRef.current?.select();
     });
   }
 
@@ -189,10 +188,14 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
             ref={quantidadeRef}
             data-testid="quantidade-input"
             type="number"
+            inputMode="none"
             min={1}
             max={maximo}
-            value={quantidade}
+            value={quantidade === 0 ? "" : quantidade}
             onChange={(e) => setQuantidade(Number(e.target.value))}
+            onPointerDown={allowKeyboardOnTap}
+            onBlur={suppressKeyboardOnBlur}
+            onClick={() => setQuantidade(0)}
             autoComplete="off"
           />
 

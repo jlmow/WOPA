@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MontagemInfo } from "../types";
+import { allowKeyboardOnTap, suppressKeyboardOnBlur } from "../../../shared/scannerInput";
 
 interface Props {
   montagem: MontagemInfo;
@@ -82,8 +83,12 @@ export function MontarPlataforma({ montagem, onConfirmar }: Props) {
             id="palete-input"
             ref={inputRef}
             data-testid="palete-input"
+            inputMode="none"
             value={paleteInput}
             onChange={(e) => setPaleteInput(e.target.value)}
+            onPointerDown={allowKeyboardOnTap}
+            onBlur={suppressKeyboardOnBlur}
+            onClick={() => setPaleteInput("")}
             placeholder="Ler código da palete"
             autoComplete="off"
           />
@@ -118,8 +123,12 @@ export function MontarPlataforma({ montagem, onConfirmar }: Props) {
                 id="cesto-input"
                 ref={inputRef}
                 data-testid="cesto-input"
+                inputMode="none"
                 value={cestoInput}
                 onChange={(e) => setCestoInput(e.target.value)}
+                onPointerDown={allowKeyboardOnTap}
+                onBlur={suppressKeyboardOnBlur}
+                onClick={() => setCestoInput("")}
                 placeholder="Ler código do cesto"
                 autoComplete="off"
               />

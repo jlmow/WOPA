@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PickingTask } from "../types";
+import { allowKeyboardOnTap, suppressKeyboardOnBlur } from "../../../shared/scannerInput";
 
 interface Props {
   task: PickingTask;
@@ -61,8 +62,12 @@ export function ScanTask({ task, onScan, onVerLista }: Props) {
         <input
           ref={inputRef}
           data-testid="barcode-input"
+          inputMode="none"
           value={barcode}
           onChange={(e) => setBarcode(e.target.value)}
+          onPointerDown={allowKeyboardOnTap}
+          onBlur={suppressKeyboardOnBlur}
+          onClick={() => setBarcode("")}
           placeholder="Ler código de barras"
           disabled={busy}
           autoComplete="off"

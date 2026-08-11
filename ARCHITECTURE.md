@@ -1812,15 +1812,50 @@ começar pela Fase 1 e crescer para a Fase 2.
   certo com o cabeçalho já registado (`caixas_nec` soma 18, `vol_pick`
   soma 140280 cm³, `peso_linha` soma 27.78 kg).
 - **`database/dados-teste.sql` (novo, script separado):** carrega essa
-  Ordem real (cabeçalho + 4 linhas) mais o que ainda faltava e não veio
+  Ordem real (cabeçalho + linhas) mais o que ainda faltava e não veio
   do PHC — zona/alvéolos de teste, `Artigos` (descrição/dimensões
   estimadas a partir de `vol_pick`/`peso_linha`/`qtd`, já que o PHC só
-  deu o total por linha, não a ficha do artigo) e stock (`SA`). Deixa
-  pronta 1 missão de picking com a plataforma P2 por montar — primeiro
-  teste real de scan num terminal Android. IDs com prefixo
-  `teste`/`TST-` de propósito, com instruções de limpeza no fundo do
-  próprio ficheiro.
-- **`numpf` confirmado:** número de proforma (encomenda).
+  deu o total por linha, não a ficha do artigo) e stock (`SA`). Depois
+  alargado para 5 Ordens reais (P1, P2, P4, e um P1(4) multi-plataforma
+  com 4 missões separadas, uma por plataforma — tal como o despacho
+  real faz) — 8 missões de picking ao todo, para um teste mais
+  representativo do que só uma. IDs com prefixo `teste`/`TST-` de
+  propósito, com instruções de limpeza no fundo do próprio ficheiro.
+- **`numpf` confirmado:** número de proforma (encomenda) — a coluna
+  ficou `NumeroProforma` (não `NumeroCliente`, nome inicial errado).
+
+### ADR-033 — Bug real na montagem (cestos duplicados); regras de leitura no `pda` (teclado só ao toque, apagar ao tocar, sem duplicados)
+
+- **Bug real, encontrado no primeiro teste no Android:** ler a mesma
+  matrícula para dois cestos da mesma plataforma rebentava a `UNIQUE`
+  de `PlataformaCestos`/`CestoInstancias` (ADR-029/030) com um erro
+  500 genérico em vez de mensagem clara — o endpoint de montagem não
+  validava duplicados antes de tentar gravar. Corrigido com uma
+  validação explícita (`Conflict`, "As matrículas dos cestos têm de
+  ser todas diferentes") antes de qualquer escrita, e replicada no
+  próprio `pda` (`MontarPlataforma`) para dar feedback imediato, sem
+  esperar pela resposta do servidor.
+- **Regras de leitura pedidas pelo cliente, aplicadas a todos os
+  campos de leitura do `pda` (`ScanTask`, `MontarPlataforma` — palete e
+  cesto —, `PickAlveolo` — quantidade):**
+  1. **O teclado nativo do Android só deve abrir ao toque real no
+     campo, nunca quando o foco é posto por código** (os `useEffect`
+     que mantêm o foco no campo para o leitor físico funcionar sem o
+     operador tocar no ecrã, ADR-007). Resolvido com
+     `inputmode="none"` por omissão + `onPointerDown` a mudar para
+     `"text"` (dispara antes do focus nativo, a tempo de o browser
+     decidir mostrar o teclado) + `onBlur` a repor `"none"` — ver
+     `pda/src/shared/scannerInput.ts`. Problema conhecido de
+     `HTMLInputElement.focus()` em WebViews Android, não específico
+     do WOPA.
+  2. **Tocar num campo já preenchido limpa o valor** (`onClick` a
+     repor o estado a vazio) — antes o campo de quantidade só
+     pré-selecionava o texto (`PickAlveolo`), agora limpa mesmo,
+     como pedido.
+  3. **Validação contra leituras duplicadas** — além do gate de
+     montagem (ponto acima), a leitura de cesto no `pda` já recusa
+     localmente adicionar uma matrícula repetida à lista, com
+     mensagem no ecrã, antes de sequer chamar o servidor.
 
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
