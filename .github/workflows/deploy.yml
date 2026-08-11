@@ -1,0 +1,53 @@
+name: Deploy WOPA para o IIS
+
+# Manual de propósito (workflow_dispatch), não em cada push -- o
+# orchestrator fala com uma base de dados real do cliente, por isso
+# um deploy automático a cada commit não é o comportamento certo por
+# omissão. Se quiseres deploy automático depois de estabilizar, troca
+# por (ou acrescenta) um gatilho "push: branches: [main]".
+on:
+  workflow_dispatch:
+    inputs:
+      seed_realistic:
+        description: "Carregar dados quase-reais (seed-realistic.sql) -- só faz sentido na primeira instalação, não em deploys de rotina"
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    # Corre no runner self-hosted instalado no próprio servidor Windows
+    # (ver orchestrator/DEPLOY.md secção 0.1) -- não num runner do
+    # GitHub na cloud, que não teria acesso à rede interna do cliente.
+    runs-on: [self-hosted, Windows]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar/atualizar o WOPA
+        shell: powershell
+        env:
+          SQL_SERVER: ${{ secrets.WOPA_SQL_SERVER }}
+          SQL_USER: ${{ secrets.WOPA_SQL_USER }}
+          SQL_PASSWORD: ${{ secrets.WOPA_SQL_PASSWORD }}
+          WOPA_HOST: ${{ secrets.WOPA_HOST }}
+          SEED_REALISTIC: ${{ github.event.inputs.seed_realistic }}
+        run: |
+          # Deploys de rotina saltam a base de dados (mais rápido, e
+          # não mexe em dados reais sem pedires); só toca na BD quando
+          # pedes explicitamente dados quase-reais.
+          $extra = @{}
+          if ($env:SEED_REALISTIC -eq "true") {
+            $extra["SeedRealistic"] = $true
+          } else {
+            $extra["SkipDatabase"] = $true
+          }
+
+          .\deploy\install-wopa.ps1 `
+            -SqlServer $env:SQL_SERVER `
+            -SqlUser $env:SQL_USER `
+            -SqlPassword $env:SQL_PASSWORD `
+            -HostName $env:WOPA_HOST `
+            -SkipPrereqInstall `
+            -CI `
+            @extra

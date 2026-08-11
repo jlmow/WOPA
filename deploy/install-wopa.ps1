@@ -76,8 +76,25 @@
     servidor não tem acesso à internet, ou se preferes instalar isso
     manualmente primeiro.
 
+.PARAMETER SkipDatabase
+    Não corre schema.sql/seed-realistic.sql — usa isto nos deploys de
+    rotina (ex. a partir do GitHub Actions) depois da base de dados já
+    ter sido criada uma vez, para não tocar nela em cada deploy.
+
+.PARAMETER CI
+    Modo não interativo — para correr a partir de automação (ex.
+    GitHub Actions self-hosted runner), onde não há ninguém para
+    responder a prompts nem para premir ENTER no fim. Sem isto, o
+    script para à espera de input e a automação fica pendurada para
+    sempre. Se não passares -SqlPassword neste modo, falha logo com
+    erro claro em vez de tentar perguntar.
+
 .EXAMPLE
     .\install-wopa.ps1 -SqlServer "WOPASRV\wopa" -HostName "172.16.4.15" -SeedRealistic
+
+.EXAMPLE
+    # deploy de rotina, chamado pelo GitHub Actions (ver .github/workflows/deploy.yml)
+    .\install-wopa.ps1 -SqlServer "WOPASRV\wopa" -HostName "172.16.4.15" -SqlPassword $env:SQL_PASSWORD -SkipPrereqInstall -SkipDatabase -CI
 #>
 
 [CmdletBinding()]
@@ -93,10 +110,23 @@ param(
     [int]$PdaPort = 8081,
     [int]$ControllerPort = 8082,
     [switch]$SeedRealistic,
-    [switch]$SkipPrereqInstall
+    [switch]$SkipPrereqInstall,
+    [switch]$SkipDatabase,
+    [switch]$CI
 )
 
 $ErrorActionPreference = "Stop"
+
+# Auto-deteta automação mesmo sem -CI explícito (GitHub Actions define
+# sempre estas variáveis de ambiente no runner).
+$isCiRun = $CI -or $env:GITHUB_ACTIONS -eq "true" -or $env:CI -eq "true"
+
+function Wait-BeforeExit {
+    if (-not $isCiRun) {
+        Write-Host ""
+        Read-Host "Prima ENTER para fechar"
+    }
+}
 
 # Verificação manual (em vez de "#Requires -RunAsAdministrator") --
 # assim, se não estiveres elevado, o script consegue mostrar uma
@@ -109,8 +139,7 @@ if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administ
     Write-Host "Fecha esta janela, abre o PowerShell como Administrador" -ForegroundColor Yellow
     Write-Host "(Menu Iniciar -> 'PowerShell' -> botao direito -> 'Executar como Administrador')" -ForegroundColor Yellow
     Write-Host "e corre o script outra vez a partir dai." -ForegroundColor Yellow
-    Write-Host ""
-    Read-Host "Prima ENTER para fechar"
+    Wait-BeforeExit
     exit 1
 }
 
@@ -150,6 +179,9 @@ foreach ($proj in @("orchestrator", "pda", "controller")) {
 }
 
 if (-not $SqlPassword) {
+    if ($isCiRun) {
+        throw "-SqlPassword não foi passado e isto está a correr em modo automático (-CI) -- não há ninguém para responder a um prompt. Passa a password (ex. a partir de um secret do GitHub Actions)."
+    }
     $secure = Read-Host "Password do SQL Server (utilizador '$SqlUser')" -AsSecureString
     $SqlPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
         [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
@@ -318,30 +350,36 @@ if ($needsIisReset) {
 # 2. Base de dados
 # -------------------------------------------------------------------
 
-Write-Step "A criar/atualizar a base de dados WOPA em $SqlServer"
-
-if (Test-Command "sqlcmd") {
-    $schemaPath = Join-Path $SourceRoot "orchestrator\database\schema.sql"
-    Write-Host "  A correr schema.sql..."
-    & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -i $schemaPath
-    if ($LASTEXITCODE -ne 0) { throw "schema.sql falhou (código $LASTEXITCODE) -- ver mensagens acima." }
-    Write-Ok "schema.sql aplicado"
-
-    if ($SeedRealistic) {
-        $seedPath = Join-Path $SourceRoot "orchestrator\database\seed-realistic.sql"
-        if (Test-Path $seedPath) {
-            Write-Host "  A carregar dados quase-reais (seed-realistic.sql) -- pode demorar uns segundos..."
-            & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -d WOPA -i $seedPath
-            if ($LASTEXITCODE -ne 0) { throw "seed-realistic.sql falhou (código $LASTEXITCODE)." }
-            Write-Ok "Dados quase-reais carregados"
-        }
-        else {
-            Write-Warn2 "seed-realistic.sql não encontrado em '$seedPath' -- ignorado."
-        }
-    }
+if ($SkipDatabase) {
+    Write-Step "A saltar a base de dados (-SkipDatabase)"
+    Write-Ok "Assumido que schema.sql já foi aplicado antes -- típico num deploy de rotina"
 }
 else {
-    Write-Warn2 "sqlcmd indisponível -- salta a criação da base de dados. Corre orchestrator\database\schema.sql manualmente (SSMS ou sqlcmd) antes de usar o WOPA."
+    Write-Step "A criar/atualizar a base de dados WOPA em $SqlServer"
+
+    if (Test-Command "sqlcmd") {
+        $schemaPath = Join-Path $SourceRoot "orchestrator\database\schema.sql"
+        Write-Host "  A correr schema.sql..."
+        & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -i $schemaPath
+        if ($LASTEXITCODE -ne 0) { throw "schema.sql falhou (código $LASTEXITCODE) -- ver mensagens acima." }
+        Write-Ok "schema.sql aplicado"
+
+        if ($SeedRealistic) {
+            $seedPath = Join-Path $SourceRoot "orchestrator\database\seed-realistic.sql"
+            if (Test-Path $seedPath) {
+                Write-Host "  A carregar dados quase-reais (seed-realistic.sql) -- pode demorar uns segundos..."
+                & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -d WOPA -i $seedPath
+                if ($LASTEXITCODE -ne 0) { throw "seed-realistic.sql falhou (código $LASTEXITCODE)." }
+                Write-Ok "Dados quase-reais carregados"
+            }
+            else {
+                Write-Warn2 "seed-realistic.sql não encontrado em '$seedPath' -- ignorado."
+            }
+        }
+    }
+    else {
+        Write-Warn2 "sqlcmd indisponível -- salta a criação da base de dados. Corre orchestrator\database\schema.sql manualmente (SSMS ou sqlcmd) antes de usar o WOPA."
+    }
 }
 
 $connectionString = "Server=$SqlServer;Database=WOPA;User Id=$SqlUser;Password=$SqlPassword;TrustServerCertificate=True;"
@@ -508,6 +546,7 @@ Write-Host "Login de exemplo (dados de seed): operador 42, PIN 1234." -Foregroun
 
 }
 catch {
+    $script:failed = $true
     Write-Host ""
     Write-Host "=== ERRO -- a instalação parou ===" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
@@ -516,6 +555,12 @@ catch {
     Write-Host ($_ | Out-String) -ForegroundColor DarkGray
 }
 finally {
-    Write-Host ""
-    Read-Host "Prima ENTER para fechar"
+    Wait-BeforeExit
 }
+
+# Fora do try/catch de propósito: garante que o processo termina com
+# código de saída != 0 quando algo falhou -- essencial para o GitHub
+# Actions (ou qualquer automação) saber que o deploy falhou, em vez de
+# reportar sucesso só porque o script chegou ao fim sem exceção por
+# apanhar.
+if ($script:failed) { exit 1 }

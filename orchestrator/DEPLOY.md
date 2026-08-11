@@ -41,6 +41,54 @@ teste primeiro se puderes, e avisa-me de qualquer erro para eu
 corrigir. As secções 1–6 abaixo continuam válidas como referência do
 que o script faz (e para quando quiseres fazer só uma parte à mão).
 
+## 0.1 Deploy direto do GitHub (`.github/workflows/deploy.yml`)
+
+Depois da primeira instalação (secção 0) estar feita, dá para acionar
+deploys seguintes diretamente a partir do GitHub, sem teres de copiar
+ficheiros à mão outra vez — através de um **runner self-hosted**
+instalado no próprio servidor. O servidor não tem acesso de entrada
+(inbound) da internet, por isso não é um runner normal do GitHub na
+cloud — é um processo que corre no servidor e liga-se **para fora**
+ao GitHub à procura de trabalho (a mesma direção de ligação que já
+usas para instalar pacotes, sem abrir nada na firewall).
+
+**1. Instalar o runner no servidor** (uma vez só): no GitHub, vai a
+`Settings` → `Actions` → `Runners` → `New self-hosted runner`, escolhe
+Windows, e segue os comandos que o GitHub te mostra ali — são
+específicos da tua conta/repositório (têm um token de registo válido
+por pouco tempo, por isso não os posso escrever aqui antecipadamente).
+No fim, instala-o como serviço Windows (o próprio assistente do GitHub
+pergunta isto) para ficar sempre a correr, mesmo depois de reiniciares
+o servidor.
+
+**2. Configurar os secrets do repositório**: `Settings` → `Secrets and
+variables` → `Actions` → `New repository secret`, um por cada:
+
+| Secret | Valor |
+|---|---|
+| `WOPA_SQL_SERVER` | ex. `WOPASRV\wopa` |
+| `WOPA_SQL_USER` | ex. `sa` |
+| `WOPA_SQL_PASSWORD` | a password do SQL Server |
+| `WOPA_HOST` | ex. `172.16.4.15` — o IP/nome pelo qual os PDAs/postos acedem ao servidor |
+
+Nunca ficam no código nem nos logs do workflow — o GitHub oculta
+automaticamente qualquer valor de um secret que apareça no output.
+
+**3. Disparar um deploy**: separador `Actions` do repositório →
+"Deploy WOPA para o IIS" → `Run workflow`. Por omissão só publica
+`orchestrator`/`pda`/`controller` e reinicia os sites (**não** toca na
+base de dados — `-SkipDatabase`); marca a opção "Carregar dados
+quase-reais" só se quiseres repetir esse carregamento a sério (não é
+para deploys de rotina).
+
+O workflow está deliberadamente configurado para correr só quando
+pedes (`workflow_dispatch`), não em cada `push` — o `orchestrator`
+fala com a base de dados real do cliente, por isso um deploy
+automático a cada commit não é o comportamento certo por omissão.
+Se, mais à frente, quiseres deploy automático a cada push para `main`,
+é uma alteração pequena ao ficheiro do workflow (adicionar um gatilho
+`push`) — pede-me quando fizer sentido.
+
 ## 1. Pré-requisitos no servidor Windows
 
 1. **IIS** instalado, com o módulo **URL Rewrite** (necessário para o
