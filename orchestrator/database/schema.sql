@@ -793,5 +793,73 @@ BEGIN
 END
 GO
 
+-------------------------------------------------------------------------
+-- 28. Migrações aditivas (ADR-032) — ordenspreparacao ganha campos da
+--     query real de tipificação do PHC (cliente confirmou: a
+--     Ordem já chega tipificada de lá — TipoPlataformaCodigo/
+--     NPlataformas passam a poder vir prontos, sem o WOPA recalcular
+--     por cubicagem). Os restantes campos (NumeroOrdem/NumeroPedido/
+--     NumeroCliente/NumRefs/TotalCaixas/VolumeTotalCm3/PesoTotalKg/
+--     RefsSemFicha/Observacoes) são só para rastreabilidade contra a
+--     origem -- ver ARCHITECTURE.md ADR-032.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'ReferenciaExterna')
+    ALTER TABLE dbo.ordenspreparacao ADD ReferenciaExterna NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_ordenspreparacao_ReferenciaExterna' AND object_id = OBJECT_ID(N'dbo.ordenspreparacao'))
+    CREATE UNIQUE INDEX UQ_ordenspreparacao_ReferenciaExterna ON dbo.ordenspreparacao (ReferenciaExterna) WHERE ReferenciaExterna IS NOT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumeroOrdem')
+    ALTER TABLE dbo.ordenspreparacao ADD NumeroOrdem INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumeroPedido')
+    ALTER TABLE dbo.ordenspreparacao ADD NumeroPedido INT NULL;
+GO
+
+-- numpf na origem -- significado exato por confirmar com o cliente (ver ARCHITECTURE.md ADR-032).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumeroCliente')
+    ALTER TABLE dbo.ordenspreparacao ADD NumeroCliente INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'TipoPlataformaCodigo')
+    ALTER TABLE dbo.ordenspreparacao ADD TipoPlataformaCodigo NVARCHAR(10) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_ordenspreparacao_TipoPlataforma')
+    ALTER TABLE dbo.ordenspreparacao ADD CONSTRAINT FK_ordenspreparacao_TipoPlataforma FOREIGN KEY (TipoPlataformaCodigo) REFERENCES dbo.tiposplataforma (Codigo);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NPlataformas')
+    ALTER TABLE dbo.ordenspreparacao ADD NPlataformas INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'NumRefs')
+    ALTER TABLE dbo.ordenspreparacao ADD NumRefs INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'TotalCaixas')
+    ALTER TABLE dbo.ordenspreparacao ADD TotalCaixas INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'VolumeTotalCm3')
+    ALTER TABLE dbo.ordenspreparacao ADD VolumeTotalCm3 DECIMAL(14,3) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'PesoTotalKg')
+    ALTER TABLE dbo.ordenspreparacao ADD PesoTotalKg DECIMAL(10,3) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'RefsSemFicha')
+    ALTER TABLE dbo.ordenspreparacao ADD RefsSemFicha INT NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ordenspreparacao') AND name = N'Observacoes')
+    ALTER TABLE dbo.ordenspreparacao ADD Observacoes NVARCHAR(500) NULL;
+GO
+
 PRINT 'Base de dados WOPA pronta.';
 GO

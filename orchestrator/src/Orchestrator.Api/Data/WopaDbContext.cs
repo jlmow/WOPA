@@ -127,6 +127,8 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
         {
             e.ToTable("ordenspreparacao");
             e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ReferenciaExterna).IsUnique().HasFilter("[ReferenciaExterna] IS NOT NULL");
+            e.HasOne<TipoPlataformaEntity>().WithMany().HasForeignKey(x => x.TipoPlataformaCodigo);
         });
 
         modelBuilder.Entity<PlataformaEntity>(e =>

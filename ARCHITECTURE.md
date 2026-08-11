@@ -1771,6 +1771,48 @@ começar pela Fase 1 e crescer para a Fase 2.
   seguido de `sqlcmd -f 65001 -i schema.sql` (a flag `-f 65001`
   continua obrigatória, ver ADR-021 — mojibake).
 
+### ADR-032 — A tipificação já vem decidida do PHC; `OrdensPreparacao` ganha campos de rastreabilidade contra a origem
+
+- **Contexto:** o cliente partilhou uma amostra real da query do PHC
+  (colunas `bostamp, ok, ordem, pedido, numpf, clientepf, numrefs,
+  total_caixas, vol_total_cm3, vol_total_litros, peso_total_kg,
+  tipo_plataforma, n_plataformas, refs_sem_ficha, u_observac`).
+  `tipo_plataforma`/`n_plataformas` (ex.: `"P1(4)"` + `n_plataformas=4`)
+  são exatamente a decisão que o `CubicagemService` do WOPA calculava
+  sozinho (ADR-014/016/017/018) — a mesma notação `Codigo(N)` que o
+  próprio `Tipificar` já produzia. Perguntado diretamente: a Ordem
+  chega já tipificada do PHC, o WOPA usa esse valor em vez de
+  recalcular.
+- **`OrdensPreparacao` ganha (ALTER TABLE guardado, ADR-027-style):**
+  `TipoPlataformaCodigo`/`NPlataformas` (a decisão do PHC, quando vem);
+  `ReferenciaExterna` (o `bostamp`, único, para reimportar a mesma
+  Ordem sem duplicar); `NumeroOrdem`/`NumeroPedido`/`NumeroCliente`
+  (`ordem`/`pedido`/`numpf` — este último com significado exato por
+  confirmar, guardado como está por agora); `NumRefs`/`TotalCaixas`/
+  `VolumeTotalCm3`/`PesoTotalKg`/`RefsSemFicha`/`Observacoes` (o resto,
+  só para rastreabilidade/comparação contra a origem).
+- **`POST /{id}/tipificar` fica em dois caminhos:** se
+  `Ordem.TipoPlataformaCodigo` já vier preenchido (da origem), gera as
+  Plataformas diretamente a partir daí (ainda chama
+  `CubicagemService.SequenciaCamadas` para o índice/classe de camada —
+  isso continua a ser sobre empilhamento físico, não sobre decidir o
+  tipo). Se não vier (ordens antigas/de teste sem estes campos), mantém
+  a cubicagem do próprio WOPA como estava — nada muda para quem já
+  testou sem estes campos.
+- **Por fazer — esta amostra não chega para testar o `pda` a sério:**
+  é agregada ao nível da Ordem/PS (uma linha por `pedido`, com
+  `numrefs`/`total_caixas` já somados) — não tem `Sku`/`Quantidade`
+  por linha, que é o que `OrdensSeparacaoLinhas` (e por isso as tarefas
+  de picking) precisam. Por esse motivo, esta amostra concreta não foi
+  importada para a BD — só ficou pronto o caminho para quando vier
+  acompanhada de detalhe por linha. Ver pedido ao cliente na conversa:
+  PS com `Sku`+`Quantidade`, `Artigos` reais (pelo menos EAN/dimensões
+  dos SKUs testados), `ALV`/`Zonas` reais do armazém, e stock (`SA`)
+  real para essas referências.
+- **`numpf`:** significado exato não confirmado (número de cliente?
+  proforma? outro?) — guardado tal como vem, sem lhe atribuir semântica
+  a mais até o cliente confirmar.
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para

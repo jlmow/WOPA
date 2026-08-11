@@ -13,8 +13,29 @@ public record PsRecebido(string NumeroDocumento, string Origem, string? Canal, I
 /// Corpo de POST /api/ordens-preparacao: a Ordem de Preparação chega já
 /// composta (cliente/data/morada e os PS que a compõem já decididos
 /// noutro software) — o WOPA só a recebe e guarda (ADR-017).
+///
+/// TipoPlataformaCodigo/NPlataformas (ADR-032): quando a origem já
+/// decidiu a tipificação (query real do PHC), o "Tipificar" materializa
+/// estes valores diretamente em vez de recalcular por cubicagem. Os
+/// restantes campos novos são só para rastreabilidade contra a origem.
 /// </summary>
-public record NovaOrdemPreparacaoRequest(string Cliente, DateOnly? DataEntrega, string? MoradaEntrega, IReadOnlyList<PsRecebido> Ps);
+public record NovaOrdemPreparacaoRequest(
+    string Cliente,
+    DateOnly? DataEntrega,
+    string? MoradaEntrega,
+    IReadOnlyList<PsRecebido> Ps,
+    string? ReferenciaExterna = null,
+    int? NumeroOrdem = null,
+    int? NumeroPedido = null,
+    int? NumeroCliente = null,
+    string? TipoPlataformaCodigo = null,
+    int? NPlataformas = null,
+    int? NumRefs = null,
+    int? TotalCaixas = null,
+    decimal? VolumeTotalCm3 = null,
+    decimal? PesoTotalKg = null,
+    int? RefsSemFicha = null,
+    string? Observacoes = null);
 
 public record TipificarRequest(decimal? AlturaPaleteCm);
 
@@ -34,7 +55,14 @@ public record OrdemPreparacaoResumo(
     string? TipoIndicativo,
     IReadOnlyList<PlataformaResumo> Plataformas,
     bool Urgente,
-    DateTime? DataLimite);
+    DateTime? DataLimite,
+    string? ReferenciaExterna,
+    int? NumeroOrdem,
+    int? NumeroPedido,
+    string? TipoPlataformaOrigem,
+    int? NPlataformasOrigem,
+    int? RefsSemFicha,
+    string? Observacoes);
 
 /// <summary>ADR-027: marcada pelo supervisor no controller, não vem da origem.</summary>
 public record UrgenteRequest(bool Urgente, DateTime? DataLimite);

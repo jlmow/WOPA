@@ -25,6 +25,15 @@ export interface OrdemPreparacaoResumo {
   plataformas: PlataformaResumo[];
   urgente: boolean;
   dataLimite: string | null;
+  // ADR-032: campos da query real de tipificação do PHC, quando a
+  // Ordem já chega tipificada de lá (rastreabilidade contra a origem).
+  referenciaExterna: string | null;
+  numeroOrdem: number | null;
+  numeroPedido: number | null;
+  tipoPlataformaOrigem: string | null;
+  nPlataformasOrigem: number | null;
+  refsSemFicha: number | null;
+  observacoes: string | null;
 }
 
 export const ordensPreparacaoApi = {

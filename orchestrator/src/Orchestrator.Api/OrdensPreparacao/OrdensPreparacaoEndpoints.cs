@@ -57,6 +57,18 @@ public static class OrdensPreparacaoEndpoints
                 Cliente = pedido.Cliente,
                 DataEntrega = pedido.DataEntrega,
                 MoradaEntrega = pedido.MoradaEntrega,
+                ReferenciaExterna = pedido.ReferenciaExterna,
+                NumeroOrdem = pedido.NumeroOrdem,
+                NumeroPedido = pedido.NumeroPedido,
+                NumeroCliente = pedido.NumeroCliente,
+                TipoPlataformaCodigo = pedido.TipoPlataformaCodigo,
+                NPlataformas = pedido.NPlataformas,
+                NumRefs = pedido.NumRefs,
+                TotalCaixas = pedido.TotalCaixas,
+                VolumeTotalCm3 = pedido.VolumeTotalCm3,
+                PesoTotalKg = pedido.PesoTotalKg,
+                RefsSemFicha = pedido.RefsSemFicha,
+                Observacoes = pedido.Observacoes,
             };
             db.OrdensPreparacao.Add(ordem);
 
@@ -142,10 +154,27 @@ public static class OrdensPreparacaoEndpoints
             if (todasLinhas.Count == 0)
                 return Results.Conflict(new { erro = "A ordem de preparação não tem linhas para tipificar." });
 
-            var resultadoCubicagem = await cubicagem.CubicarOrdemAsync(todasLinhas);
-            var tipo = await cubicagem.TipificarAsync(resultadoCubicagem.VolumeCm3);
-            if (tipo.TipoCodigo is null)
-                return Results.Conflict(new { erro = "Volume de picking nulo — a ordem não pode ser tipificada (verificar fichas de artigo incompletas)." });
+            // ADR-032: quando a origem (query real de tipificação do PHC) já
+            // decidiu o tipo de plataforma, materializa-se diretamente em vez
+            // de recalcular por cubicagem -- evita divergir da decisão do
+            // cliente. Sem isso (ordens antigas/de teste), mantém-se a
+            // cubicagem do próprio WOPA como estava.
+            string tipoCodigo;
+            int nPlataformas;
+            if (ordem.TipoPlataformaCodigo is { } tipoOrigem)
+            {
+                tipoCodigo = tipoOrigem;
+                nPlataformas = ordem.NPlataformas is > 0 ? ordem.NPlataformas.Value : 1;
+            }
+            else
+            {
+                var resultadoCubicagem = await cubicagem.CubicarOrdemAsync(todasLinhas);
+                var tipo = await cubicagem.TipificarAsync(resultadoCubicagem.VolumeCm3);
+                if (tipo.TipoCodigo is null)
+                    return Results.Conflict(new { erro = "Volume de picking nulo — a ordem não pode ser tipificada (verificar fichas de artigo incompletas)." });
+                tipoCodigo = tipo.TipoCodigo;
+                nPlataformas = tipo.NPlataformas;
+            }
 
             // Remove plataformas anteriores desta ordem, caso já tivesse sido tipificada.
             var plataformasAntigas = await db.Plataformas.Where(p => p.OrdemPreparacaoId == id).ToListAsync();
@@ -155,15 +184,15 @@ public static class OrdensPreparacaoEndpoints
                 db.Plataformas.RemoveRange(plataformasAntigas);
             }
 
-            var camadas = CubicagemService.SequenciaCamadas(tipo.NPlataformas, ordem.AlturaPaleteCm);
+            var camadas = CubicagemService.SequenciaCamadas(nPlataformas, ordem.AlturaPaleteCm);
             var novasPlataformas = camadas.Select((c, i) => new PlataformaEntity
             {
                 Id = Guid.NewGuid().ToString("n"),
                 Codigo = $"PLT-{Random.Shared.Next(1000, 9999)}-{i + 1}",
                 OrdemPreparacaoId = ordem.Id,
-                TipoPlataformaCodigo = tipo.TipoCodigo,
-                IndiceCamada = tipo.NPlataformas > 1 ? c.Indice : null,
-                ClasseCamada = tipo.NPlataformas > 1 ? c.Classe : null,
+                TipoPlataformaCodigo = tipoCodigo,
+                IndiceCamada = nPlataformas > 1 ? c.Indice : null,
+                ClasseCamada = nPlataformas > 1 ? c.Classe : null,
                 Estado = "EmPicking",
             }).ToList();
             db.Plataformas.AddRange(novasPlataformas);
@@ -233,6 +262,8 @@ public static class OrdensPreparacaoEndpoints
             ordem.Id, ordem.Cliente, ordem.DataEntrega, ordem.MoradaEntrega, ordem.Estado, ordem.AlturaPaleteCm,
             ordem.RecebidaEm, ordem.Ps.Count, volumeLitros, pesoKg, tipoIndicativo,
             ordem.Plataformas.Select(p => new PlataformaResumo(p.Id, p.Codigo, p.TipoPlataformaCodigo, p.IndiceCamada, p.ClasseCamada, p.Estado, p.CelulaDestino)).ToList(),
-            ordem.Urgente, ordem.DataLimite);
+            ordem.Urgente, ordem.DataLimite,
+            ordem.ReferenciaExterna, ordem.NumeroOrdem, ordem.NumeroPedido,
+            ordem.TipoPlataformaCodigo, ordem.NPlataformas, ordem.RefsSemFicha, ordem.Observacoes);
     }
 }
