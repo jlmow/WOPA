@@ -561,6 +561,8 @@ USING (VALUES
     (N'doca-1', N'Doca 1', N'Expedição')
 ) AS novo (Id, Codigo, Nome)
 ON alvo.Id = novo.Id
+WHEN MATCHED THEN
+    UPDATE SET Codigo = novo.Codigo, Nome = novo.Nome
 WHEN NOT MATCHED THEN
     INSERT (Id, Codigo, Nome) VALUES (novo.Id, novo.Codigo, novo.Nome);
 GO
@@ -649,6 +651,8 @@ USING (VALUES
     (510, N'Saída por quebra')
 ) AS novo (Id, Descricao)
 ON alvo.Id = novo.Id
+WHEN MATCHED THEN
+    UPDATE SET Descricao = novo.Descricao
 WHEN NOT MATCHED THEN
     INSERT (Id, Descricao) VALUES (novo.Id, novo.Descricao);
 GO
@@ -670,6 +674,10 @@ USING (VALUES
     (N'SKU-3390', N'5601234511119', N'Fita adesiva 48mm',              24, 25.0, 25.0, 20.0, 2.200, N'Leve',   30)
 ) AS novo (Sku, Ean, Descricao, UnidadesPorCaixa, ComprimentoCaixaCm, LarguraCaixaCm, AlturaCaixaCm, PesoUnitarioKg, ClasseEmpilhamento, CaixasPorPaleteCompleta)
 ON alvo.Sku = novo.Sku
+WHEN MATCHED THEN
+    UPDATE SET Ean = novo.Ean, Descricao = novo.Descricao, UnidadesPorCaixa = novo.UnidadesPorCaixa,
+        ComprimentoCaixaCm = novo.ComprimentoCaixaCm, LarguraCaixaCm = novo.LarguraCaixaCm, AlturaCaixaCm = novo.AlturaCaixaCm,
+        PesoUnitarioKg = novo.PesoUnitarioKg, ClasseEmpilhamento = novo.ClasseEmpilhamento, CaixasPorPaleteCompleta = novo.CaixasPorPaleteCompleta
 WHEN NOT MATCHED THEN
     INSERT (Sku, Ean, Descricao, UnidadesPorCaixa, ComprimentoCaixaCm, LarguraCaixaCm, AlturaCaixaCm, PesoUnitarioKg, ClasseEmpilhamento, CaixasPorPaleteCompleta)
     VALUES (novo.Sku, novo.Ean, novo.Descricao, novo.UnidadesPorCaixa, novo.ComprimentoCaixaCm, novo.LarguraCaixaCm, novo.AlturaCaixaCm, novo.PesoUnitarioKg, novo.ClasseEmpilhamento, novo.CaixasPorPaleteCompleta);
@@ -730,6 +738,8 @@ USING (VALUES
     (N'task-3', N'missao-m0142', N'SKU-3390', N'Fita adesiva 48mm',             N'5601234511119', N'alv-b0402', N'PLT-0001', N'P2', 5)
 ) AS novo (Id, MissaoId, Sku, Descricao, CodigoBarras, AlveoloId, Plataforma, TipoPlataformaCodigo, QuantidadeAlvo)
 ON alvo.Id = novo.Id
+WHEN MATCHED THEN
+    UPDATE SET Descricao = novo.Descricao, CodigoBarras = novo.CodigoBarras
 WHEN NOT MATCHED THEN
     INSERT (Id, MissaoId, Sku, Descricao, CodigoBarras, AlveoloId, Plataforma, TipoPlataformaCodigo, QuantidadeAlvo)
     VALUES (novo.Id, novo.MissaoId, novo.Sku, novo.Descricao, novo.CodigoBarras, novo.AlveoloId, novo.Plataforma, novo.TipoPlataformaCodigo, novo.QuantidadeAlvo);

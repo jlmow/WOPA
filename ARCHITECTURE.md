@@ -1312,6 +1312,46 @@ começar pela Fase 1 e crescer para a Fase 2.
   `globalRules` de rewrite não relacionadas com o WOPA antes de
   assumir que um 500 é bug do `orchestrator`.
 
+### ADR-021 — Mais três bugs reais de redeploy corrigidos (BOM, AppPool já parado, mojibake do sqlcmd)
+
+- **`pda`/`controller` a chamar `localhost:5080` em vez do orchestrator
+  real:** confirmado via DevTools (`GET http://localhost:5080/api/missoes
+  net::ERR_CONNECTION_REFUSED`) — o `.env.production` que o script
+  escreve antes do `npm run build` estava a ser escrito com
+  `-Encoding UTF8`, que no Windows PowerShell 5.1 grava um BOM; o
+  parser de `.env` do Vite não o ignora, a chave passa a
+  `﻿VITE_ORCHESTRATOR_URL`, deixa de bater com
+  `import.meta.env.VITE_ORCHESTRATOR_URL` no código, e o bundle cai
+  silenciosamente no valor por omissão. Corrigido para
+  `-Encoding ASCII` (o conteúdo é sempre só um URL `http://host:porta`,
+  nunca tem acentuação, por isso é seguro).
+- **Redeploy do `orchestrator` falha (`dotnet publish`: ficheiro em
+  uso pelo IIS Worker Process):** o hosting model `inprocess` mantém a
+  DLL carregada em memória enquanto o AppPool está a correr; num
+  redeploy (não na primeira instalação, aí o AppPool ainda não existe)
+  isso bloqueia a cópia. Corrigido a parar o AppPool
+  `WOPA-Orchestrator` antes do publish e a arrancá-lo depois — mas
+  tanto `Stop-WebAppPool` como `Restart-WebAppPool` lançam exceção
+  (não suprimida por `-ErrorAction SilentlyContinue`, que aqui não
+  chega a apanhar) quando o pool já está no estado que se está a pedir
+  ("already stopped" / "have to start stopped object before
+  restarting"). Corrigido a confirmar o estado atual do AppPool antes
+  de agir, com `try/catch` como rede de segurança.
+- **Acentuação corrompida em texto vindo da BD** (`ExpediÃ§Ã£o` em vez
+  de `Expedição`, visível no ecrã de seleção de zona do `pda`):
+  `sqlcmd`, sem `-f 65001`, lê `schema.sql`/`seed-realistic.sql` (UTF-8
+  sem BOM) com a codepage ANSI do sistema — os bytes UTF-8 de "ç"/"ã"
+  são lidos como dois caracteres Windows-1252 cada um, e é isso que
+  fica gravado na BD. Corrigido a acrescentar `-f 65001` às duas
+  chamadas de `sqlcmd`. Como isto **não corrige dados já corrompidos**
+  (só o próximo INSERT/UPDATE), as linhas de seed com acentuação
+  (`Zonas`, `CM`, `Artigos`/`MissaoLinhas` de exemplo) passaram a ter
+  `WHEN MATCHED THEN UPDATE` nos respetivos `MERGE` — antes só tinham
+  `WHEN NOT MATCHED THEN INSERT`, pelo que nunca corrigiam uma linha já
+  existente por muitas vezes que o script corresse. Basta correr
+  `schema.sql` outra vez (sem `-SkipDatabase`) para autocorrigir os
+  dados já em produção.
+
 ---
 
 ## 8. Em aberto

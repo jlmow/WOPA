@@ -360,7 +360,10 @@ else {
     if (Test-Command "sqlcmd") {
         $schemaPath = Join-Path $SourceRoot "orchestrator\database\schema.sql"
         Write-Host "  A correr schema.sql..."
-        & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -i $schemaPath
+        # -f 65001: sem isto, sqlcmd lê o ficheiro (UTF-8 sem BOM) com a
+        # codepage ANSI do sistema -- "ç"/"ã" viram "Ã§"/"Ã£" na BD
+        # (bytes UTF-8 interpretados como Windows-1252). 65001 = UTF-8.
+        & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -f 65001 -i $schemaPath
         if ($LASTEXITCODE -ne 0) { throw "schema.sql falhou (código $LASTEXITCODE) -- ver mensagens acima." }
         Write-Ok "schema.sql aplicado"
 
@@ -368,7 +371,7 @@ else {
             $seedPath = Join-Path $SourceRoot "orchestrator\database\seed-realistic.sql"
             if (Test-Path $seedPath) {
                 Write-Host "  A carregar dados quase-reais (seed-realistic.sql) -- pode demorar uns segundos..."
-                & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -d WOPA -i $seedPath
+                & sqlcmd -S $SqlServer -U $SqlUser -P $SqlPassword -C -f 65001 -d WOPA -i $seedPath
                 if ($LASTEXITCODE -ne 0) { throw "seed-realistic.sql falhou (código $LASTEXITCODE)." }
                 Write-Ok "Dados quase-reais carregados"
             }
