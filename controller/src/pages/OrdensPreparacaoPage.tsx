@@ -27,6 +27,10 @@ export function OrdensPreparacaoPage() {
 
   useEffect(carregar, []);
 
+  const abertas = ordens.filter((o) => o.estado === "Aberta").length;
+  const tipificadas = ordens.filter((o) => o.estado === "Tipificada").length;
+  const despachadas = ordens.filter((o) => o.estado === "Despachada").length;
+
   async function tipificar(id: string) {
     setAProcessar(id);
     setErro(null);
@@ -65,6 +69,25 @@ export function OrdensPreparacaoPage() {
       </header>
 
       {erro && <p className="page__error">{erro}</p>}
+
+      <div className="stat-grid" data-testid="ordens-stats">
+        <div className="stat-card stat-card--destaque">
+          <p className="stat-card__valor">{abertas}</p>
+          <p className="stat-card__label">Abertas</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{tipificadas}</p>
+          <p className="stat-card__label">Tipificadas</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{despachadas}</p>
+          <p className="stat-card__label">Despachadas</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{ordens.length}</p>
+          <p className="stat-card__label">Total</p>
+        </div>
+      </div>
 
       {ordens.map((ordem) => (
         <section key={ordem.id} className="panel" data-testid={`op-${ordem.id}`}>

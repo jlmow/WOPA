@@ -25,6 +25,12 @@ export function MissoesPage() {
 
   useEffect(carregar, []);
 
+  const emExecucao = missoes.filter((m) => m.estado === "EmExecucao").length;
+  const pausadas = missoes.filter((m) => m.estado === "Pausada").length;
+  const porAtribuir = missoes.filter((m) => m.estado === "Criada" || m.estado === "Atribuida").length;
+  const hoje = new Date().toDateString();
+  const concluidasHoje = missoes.filter((m) => m.concluidaEm && new Date(m.concluidaEm).toDateString() === hoje).length;
+
   async function executar(acao: () => Promise<Missao>, id: string) {
     setAProcessar(id);
     setErro(null);
@@ -48,6 +54,25 @@ export function MissoesPage() {
       </header>
 
       {erro && <p className="page__error">{erro}</p>}
+
+      <div className="stat-grid" data-testid="missoes-stats">
+        <div className="stat-card stat-card--destaque">
+          <p className="stat-card__valor">{emExecucao}</p>
+          <p className="stat-card__label">Em execução</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{porAtribuir}</p>
+          <p className="stat-card__label">Por atribuir</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{pausadas}</p>
+          <p className="stat-card__label">Pausadas</p>
+        </div>
+        <div className="stat-card">
+          <p className="stat-card__valor">{concluidasHoje}</p>
+          <p className="stat-card__label">Concluídas hoje</p>
+        </div>
+      </div>
 
       <table className="data-table" data-testid="missoes-table">
         <thead>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { PickingTask } from "../types";
 
 const statusLabel: Record<PickingTask["estado"], string> = {
@@ -11,10 +12,34 @@ interface Props {
   onSelect: (task: PickingTask) => void;
 }
 
+type Filtro = "todos" | "porFazer";
+
 export function TaskList({ tasks, onSelect }: Props) {
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const porFazer = tasks.filter((t) => t.estado !== "Concluida");
+  const visiveis = filtro === "todos" ? tasks : porFazer;
+
   return (
-    <ul className="task-list" data-testid="task-list">
-      {tasks.map((task) => (
+    <>
+      <div className="segmented" data-testid="task-list-filtro">
+        <button
+          type="button"
+          className={`segmented__option${filtro === "todos" ? " segmented__option--ativo" : ""}`}
+          onClick={() => setFiltro("todos")}
+        >
+          Tudo <span className="segmented__count">{tasks.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`segmented__option${filtro === "porFazer" ? " segmented__option--ativo" : ""}`}
+          onClick={() => setFiltro("porFazer")}
+        >
+          Por fazer <span className="segmented__count">{porFazer.length}</span>
+        </button>
+      </div>
+
+      <ul className="task-list" data-testid="task-list">
+        {visiveis.map((task) => (
         <li key={task.id}>
           <button
             className={`task-card task-card--${task.estado}`}
@@ -30,7 +55,8 @@ export function TaskList({ tasks, onSelect }: Props) {
             <span className="task-card__status">{statusLabel[task.estado]}</span>
           </button>
         </li>
-      ))}
-    </ul>
+        ))}
+      </ul>
+    </>
   );
 }

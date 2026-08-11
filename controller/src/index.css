@@ -1,4 +1,8 @@
 :root {
+  /* Paleta mantida — creme/bege quente, texto quase preto, dourado de
+     destaque, serif nos títulos. O que muda é a linguagem visual:
+     cartões arredondados e elevados, pills de estado com fundo suave,
+     em vez de painéis/tabelas de contorno reto e tags de contorno fino. */
   --text: #1a1a1a;
   --text-muted: #6b6b63;
   --bg: #faf8f4;
@@ -16,6 +20,11 @@
   --heading-font: Georgia, "Iowan Old Style", "Times New Roman", serif;
   --sans-font: system-ui, "Segoe UI", Roboto, sans-serif;
 
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 14px rgba(26, 26, 26, 0.06);
+
   font: 15px/1.4 var(--sans-font);
   color: var(--text);
   background: var(--bg);
@@ -32,20 +41,21 @@ body {
 
 .shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 230px 1fr;
   min-height: 100vh;
 }
 
 .shell__sidebar {
   background: var(--sidebar-bg);
   color: var(--sidebar-text);
-  padding: 24px 20px;
+  padding: 24px 16px;
 }
 
 .shell__brand {
   font-family: var(--heading-font);
   font-size: 22px;
   margin: 0;
+  padding: 0 8px;
 }
 
 .shell__brand-sub {
@@ -54,31 +64,37 @@ body {
   letter-spacing: 0.1em;
   color: #a8a49a;
   margin: 0 0 28px;
+  padding: 0 8px;
 }
 
 .shell__nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .shell__nav-link {
   color: var(--sidebar-text);
   text-decoration: none;
-  padding: 10px 12px;
+  padding: 10px 14px;
   font-size: 14px;
-  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease;
+}
+
+.shell__nav-link:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .shell__nav-link--active {
-  border-left-color: var(--gold);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--gold);
+  color: #1a1a1a;
   font-weight: 600;
 }
 
 .shell__content {
   padding: 32px 40px;
-  max-width: 1100px;
+  max-width: 1200px;
 }
 
 .page__header {
@@ -102,7 +118,8 @@ body {
   background: #f7ebeb;
   color: var(--erro);
   border: 1px solid #e3c9c9;
-  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
   margin-bottom: 16px;
 }
 
@@ -111,17 +128,56 @@ body {
   padding: 24px 0;
 }
 
+/* Cartões de estatística — sempre a partir de dados já carregados, nunca
+   inventados (ver OrdensPreparacaoPage/MissoesPage: contagens por estado
+   calculadas em memória a partir da lista já pedida à API). */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+}
+
+.stat-card__valor {
+  font-family: var(--heading-font);
+  font-size: 32px;
+  line-height: 1;
+  margin: 0 0 4px;
+}
+
+.stat-card__label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.stat-card--destaque .stat-card__valor {
+  color: var(--gold);
+}
+
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--card-bg);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
 }
 
 .data-table th,
 .data-table td {
   text-align: left;
-  padding: 12px 14px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
 }
@@ -132,7 +188,15 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 600;
-  background: #f1ecdd;
+  background: #f6f2e8;
+}
+
+.data-table tbody tr {
+  transition: background 120ms ease;
+}
+
+.data-table tbody tr:hover {
+  background: #faf7f0;
 }
 
 .data-table tbody tr:last-child td {
@@ -142,25 +206,28 @@ body {
 .status-tag {
   display: inline-block;
   font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: #ecebe6;
 }
 
 .status-tag--Pendente {
   color: var(--pendente);
 }
 .status-tag--EmProgresso {
-  color: var(--em-progresso);
-  border-color: var(--gold);
+  color: #8a6f1e;
+  background: #f3e9cc;
 }
 .status-tag--Concluida {
   color: var(--concluida);
+  background: #dcefe1;
 }
 .status-tag--erro {
   color: var(--erro);
-  border-color: var(--erro);
+  background: #f7e4e4;
 }
 
 .status-tag--op-Aberta,
@@ -173,31 +240,32 @@ body {
 .status-tag--plat-NoBuffer,
 .status-tag--plat-EmPacking,
 .status-tag--missao-EmExecucao {
-  color: var(--em-progresso);
-  border-color: var(--gold);
+  color: #8a6f1e;
+  background: #f3e9cc;
 }
 .status-tag--op-Despachada,
 .status-tag--plat-Concluida,
 .status-tag--missao-Concluida {
   color: var(--concluida);
+  background: #dcefe1;
 }
 .status-tag--missao-Pausada,
 .status-tag--missao-FechadaIncompleta {
   color: var(--erro);
-  border-color: var(--erro);
+  background: #f7e4e4;
 }
 
 /* Painéis (Ordens de Preparação, composição de PS) */
 .panel {
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  padding: 20px 24px;
-  margin-bottom: 20px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 22px 24px;
+  margin-bottom: 16px;
 }
 
 .panel--destaque {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 1px var(--gold);
+  box-shadow: 0 0 0 2px var(--gold), var(--shadow-card);
 }
 
 .panel h2 {
@@ -236,20 +304,40 @@ body {
 .form-row select,
 .acoes-cell select {
   font: inherit;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--bg);
   min-width: 160px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.acoes-cell select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(185, 150, 46, 0.16);
 }
 
 .button {
   font: inherit;
   cursor: pointer;
-  border: 1px solid var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--card-bg);
   color: var(--text);
   padding: 9px 16px;
   font-size: 13px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  box-shadow: var(--shadow-card);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .button:disabled {
@@ -260,10 +348,11 @@ body {
 .button--primary {
   background: var(--text);
   color: var(--card-bg);
+  border-color: var(--text);
 }
 
 .button--small {
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 12px;
 }
 

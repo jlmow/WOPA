@@ -1453,6 +1453,37 @@ começar pela Fase 1 e crescer para a Fase 2.
   a cada arranque, mudar o IP/hostname do servidor implica recompilar
   e reinstalar o APK em todos os dispositivos.
 
+### ADR-024 — Modernização visual do pda e do controller (cores/fontes mantidas)
+
+- **Contexto:** o cliente não gostou do layout anterior ("sem cantos
+  arredondados", listas planas com divisórias, tags de contorno fino)
+  e pediu para modernizar, mantendo a paleta e tipografia atuais,
+  inspirado (não copiado) em screenshots de outra aplicação sua (WIN
+  Suporte) — cartões arredondados com sombra, pills de estado com
+  fundo colorido, filtros em separadores (segmented control), cartões
+  de estatística.
+- **Decisão:** mantidos os tokens de cor/fonte dos dois `index.css`
+  (creme `#faf8f4`, texto quase-preto, dourado `#b9962e`, serif
+  Georgia nos títulos) — só a linguagem visual dos componentes mudou:
+  cantos arredondados (`--radius-sm/md/pill`) e sombra suave
+  (`--shadow-card`) em cartões/painéis/tabelas/botões/inputs; estados
+  (`status-tag`/`task-card__status`) passam a pill com fundo colorido
+  suave em vez de texto/contorno; `pda`: `TaskList` ganha um filtro em
+  separadores "Tudo/Por fazer" com contagem (padrão mais visível dos
+  screenshots de referência); `controller`: barra lateral com item
+  ativo em pill dourada preenchida em vez de contorno lateral.
+- **Cartões de estatística — só com dados reais:** `MissoesPage` e
+  `OrdensPreparacaoPage` ganharam um `stat-grid` no topo (em execução/
+  por atribuir/pausadas/concluídas hoje; abertas/tipificadas/
+  despachadas/total) — todos calculados em memória a partir da lista
+  já carregada da API, nunca inventados nem vindos de um endpoint novo.
+- **Sem contexto de utilizador na barra do `controller`:** os
+  screenshots de referência mostram uma barra "empresa · utilizador ·
+  função" — não replicado, porque o `controller` ainda não tem sessão/
+  login (ADR-013, "em falta em quase todo o lado", secção 8); mostrar
+  isso agora seria inventar dados que não existem. Fica para quando o
+  login do `controller` for feito.
+
 ---
 
 ## 8. Em aberto
