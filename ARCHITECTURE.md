@@ -1249,6 +1249,69 @@ começar pela Fase 1 e crescer para a Fase 2.
   performance testada com o volume real carregado, não só com os
   dados de exemplo.
 
+### ADR-020 — Instalação real no IIS do cliente: cinco bloqueios reais resolvidos, um deles fora do WOPA
+
+- **Contexto:** `deploy/install-wopa.ps1` (ADR já implícito no próprio
+  script) foi corrido pela primeira vez a sério, no servidor Windows
+  do cliente (`WOPASRV`, disco `E:\`), com o utilizador a colar o erro
+  exato de cada passo e a correr o comando seguinte que eu indicava.
+  Registo aqui os bloqueios encontrados, porque nenhum deles é óbvio a
+  reproduzir sem um Windows Server real à frente.
+- **Bloqueios encontrados e corrigidos, por ordem:**
+  1. Janela do PowerShell a abrir e fechar sem reação nenhuma —
+     causa ambígua entre política de execução e falha silenciosa do
+     `#Requires -RunAsAdministrator`; removido o `#Requires`, passou a
+     haver verificação manual de elevação + `Read-Host` no fim
+     (`Wait-BeforeExit`) e todo o corpo do script em `try/catch/finally`.
+  2. Comandos corridos em `cmd.exe`, não PowerShell (`Unblock-File`
+     "not recognized") — revelou também que a cópia real ficou em
+     `E:\wopa\install`, não `C:\wopa\install` como o script assumia;
+     `SourceRoot` passou a autodetetar-se via `$PSScriptRoot`.
+  3. `Unexpected token 'confirma'` — Windows PowerShell 5.1 a ler um
+     ficheiro UTF-8 sem BOM com a codepage do sistema, corrompendo
+     acentuação/travessões PT até partir o tokenizer; corrigido a
+     acrescentar BOM UTF-8 ao ficheiro.
+  4. `File ... is not digitally signed` — política de execução
+     `AllSigned`-like no servidor; contornado com
+     `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`
+     (só para a sessão, não persistente).
+  5. `Este script tem de correr como Administrador` mesmo a janela
+     parecendo já elevada — a janela não estava de facto elevada;
+     resolvido confirmando o título da janela e usando "Run as
+     administrator" a sério.
+  - Depois destes cinco, o script correu de ponta a ponta: BD criada e
+    populada (5.551 artigos, 2.501 ordens, 3.367 PS, 22.362 linhas),
+    `orchestrator` publicado, `pda`/`controller` compilados, os três
+    sites do IIS criados — mas o `/health` do `orchestrator` devolvia
+    500 genérico.
+- **Causa raiz do 500, depois refinado para IIS 500.51 (URL Rewrite):**
+  nada disto era do WOPA. O servidor já tinha, de antes, uma regra
+  **global** de rewrite em `applicationHost.config`
+  (`system.webServer/rewrite/globalRules`, não scoped a nenhum site
+  específico):
+  ```xml
+  <rule name="ReverseProxyTo8080">
+      <match url="*" />
+      <action type="Rewrite" url="http://192.168.55.2X:8080/{R:1}" />
+  </rule>
+  ```
+  `url="*"` é regex inválida (repeat token sem expressão antes) — isto
+  nunca funcionou para o propósito original, e por ser uma regra
+  *global* estava a rebentar com **todos** os sites do IIS nesta
+  máquina, incluindo `Default Web Site`, não só os três do WOPA.
+  Diagnosticado comparando o `web.config` do `orchestrator` (limpo, só
+  o handler `aspNetCore`, sem `<rewrite>`) com
+  `Get-Website`/pesquisa direta no `applicationHost.config`. Removido
+  com `Clear-WebConfiguration -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/rewrite/globalRules/rule[@name='ReverseProxyTo8080']"`
+  (com backup do ficheiro antes) — `/health`, `pda` e `controller`
+  passaram a responder corretamente nos três sites.
+- **Consequência para `install-wopa.ps1`:** o script em si estava
+  correto; o bloqueio final era 100% configuração pré-existente do
+  servidor, fora do controlo do repositório. Fica registado para o
+  próximo deploy (ou próximo servidor) verificar logo à partida se há
+  `globalRules` de rewrite não relacionadas com o WOPA antes de
+  assumir que um 500 é bug do `orchestrator`.
+
 ---
 
 ## 8. Em aberto
