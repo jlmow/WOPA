@@ -18,7 +18,9 @@ export async function flushOutbox(onSincronizado?: (taskId: string, atualizado: 
       const atualizado =
         entrada.tipo === "scan"
           ? await pickingApi.scan(entrada.taskId, entrada.barcode!, entrada.opId)
-          : await pickingApi.confirm(entrada.taskId, entrada.opId);
+          : entrada.tipo === "pick"
+            ? await pickingApi.pick(entrada.taskId, entrada.alveoloId!, entrada.quantidade!, entrada.opId)
+            : await pickingApi.confirm(entrada.taskId, entrada.opId);
 
       await db.tasks.put(atualizado);
       await db.outbox.delete(entrada.opId);

@@ -1352,10 +1352,72 @@ começar pela Fase 1 e crescer para a Fase 2.
   `schema.sql` outra vez (sem `-SkipDatabase`) para autocorrigir os
   dados já em produção.
 
+### ADR-022 — Picking passa a exigir alvéolo + quantidade escolhidos pelo operador (não só o scan)
+
+- **Contexto:** o `pda` original só pedia o scan do código de barras,
+  incrementando a quantidade lida em 1 por leitura, sem o operador
+  indicar de onde estava a separar. O cliente corrigiu: "além de picar
+  o código de barras tenho que dizer obrigatoriamente qual o alvéolo
+  onde estou (lista de stock daquela ref, naquela zona onde estou) e
+  indicar a quantidade que vou separar, sugerindo caso haja stock
+  daquela ref, naquele alvéolo, a totalidade da necessidade da missão,
+  podendo o operador ter necessidade de alterar."
+- **Decisão:** o scan deixa de alterar `QuantidadeLida` — passa a ser
+  só o gate que confirma "artigo certo" e desbloqueia o passo
+  seguinte. Novo passo obrigatório depois de cada scan válido: lista
+  de alvéolos com stock do artigo **na zona onde o operador está**
+  (não um alvéolo fixo à partida), com quantidade sugerida = falta da
+  missão, limitada ao que esse alvéolo tem disponível — editável.
+  Confirmar um pick decrementa `SA`, regista o movimento em `SL`
+  (`CM=501`, "Saída por picking") e soma à quantidade lida da tarefa;
+  se ainda faltar quantidade, volta ao scan (pode vir de outro
+  alvéolo); se completa, fecha a tarefa como antes (`/confirm`
+  inalterado).
+- **Reaproveita o modelo já desenhado, não cria tabela nova:** `SA`
+  (stock atual por artigo+alvéolo) e `SL` (ledger de movimentos) já
+  existiam no `schema.sql` desde a normalização do schema mas nunca
+  tinham sido mapeadas no EF Core nem tinham dado nenhum — ganharam
+  `EstoqueAlveoloEntity`/`MovimentoStockEntity` e dois endpoints novos
+  (`GET /api/picking/tasks/{id}/alveolos`,
+  `POST /api/picking/tasks/{id}/pick`, ambos idempotentes via
+  `OperacoesProcessadas`, como `/scan`/`/confirm`).
+- **Stock de demonstração:** `schema.sql` ganhou `SA` para os 3
+  alvéolos de exemplo já existentes — de propósito com o SKU-1001 em
+  **dois** alvéolos da mesma zona, para o ecrã mostrar mesmo uma
+  escolha real. Ao contrário dos `MERGE` de dados de referência
+  (Zonas/CM/Artigos), isto usa `IF NOT EXISTS` sem `UPDATE`: é dado
+  "vivo" que o próprio picking decrementa, por isso reaplicar
+  `schema.sql` não pode repor os valores iniciais por cima do que já
+  foi picado. **Sem stock real carregado para os 5.548 artigos do
+  `seed-realistic.sql`** — só os 3 alvéolos de exemplo têm `SA`; fica
+  em aberto (ver secção 8) de onde vem esse número para o armazém
+  real, decisão do cliente: "o WOPA calcula sozinho a partir dos
+  movimentos" — ou seja, `SA`/`SL` continuam a ser a fonte de
+  verdade, só falta um import inicial de stock atual para arrancar
+  quando o layout real do armazém chegar.
+- **Offline (ADR-007):** o pick em si fica na fila de saída como
+  scan/confirm, mas a lista de alvéolos-com-stock é sempre pedida em
+  direto (não há cache local) — se o dispositivo estiver offline nesse
+  momento, mostra erro com "tentar novamente" em vez de deixar
+  escolher um alvéolo com dados potencialmente errados. Fica em
+  aberto se vale a pena cachear isto como as tarefas já são.
+- **UX — foco/avanço automático entre campos:** pedido explícito do
+  cliente, aplicado já neste fluxo novo: escolher o alvéolo avança o
+  foco sozinho para o campo de quantidade (com o valor sugerido
+  pré-selecionado, pronto a ser substituído com um único toque) — sem
+  o operador ter de tocar no campo. Mantém o princípio já usado no
+  scan (o input do código de barras mantém-se sempre focado, ADR
+  original do módulo picking).
+
 ---
 
 ## 8. Em aberto
 
+- **Origem do stock real por alvéolo (ADR-022):** `SA`/`SL` calculam-se
+  sozinhos a partir dos movimentos (decisão do cliente), mas falta o
+  import inicial — hoje só os 3 alvéolos de exemplo têm `SA`, nada
+  para os 5.548 artigos do `seed-realistic.sql`. Por fazer quando o
+  layout real do armazém chegar (ver ponto seguinte).
 - **Paginação/filtro em `GET /api/ordens-preparacao`** (ADR-019): já
   não faz N+1, mas devolve sempre todas as ordens (2.500+ na PoC com
   dados reais, ~3,6s). Filtrar por defeito às não despachadas, ou

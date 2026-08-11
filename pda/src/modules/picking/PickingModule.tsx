@@ -7,11 +7,14 @@ import { db } from "./db";
 import { flushOutbox } from "./sync";
 import { TaskList } from "./components/TaskList";
 import { ScanTask } from "./components/ScanTask";
+import { PickAlveolo } from "./components/PickAlveolo";
 import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
 import { useServerConnection } from "../../shared/useServerConnection";
 
-type Vista = "carregando" | "leitura" | "lista" | "concluida";
+// "picking": depois de um scan válido, passo obrigatório de escolher
+// alvéolo + quantidade (ADR-022) antes de a leitura seguinte ser possível.
+type Vista = "carregando" | "leitura" | "picking" | "lista" | "concluida";
 
 const MISSAO_CODIGO_CHAVE = "missaoCodigo";
 
@@ -98,8 +101,10 @@ export function PickingModule() {
   }, []);
 
   // Valida a leitura localmente (o código de barras esperado já está em
-  // cache) e atualiza o ecrã de imediato — sem depender de uma resposta de
-  // rede. A operação fica em fila para sincronizar quando houver ligação.
+  // cache) — sem depender de uma resposta de rede. Já não regista
+  // quantidade nenhuma (isso passou para handlePick, ADR-022): um scan
+  // válido só confirma o artigo certo e avança automaticamente para a
+  // escolha de alvéolo + quantidade.
   async function handleScan(
     task: PickingTask,
     barcode: string,
@@ -111,7 +116,18 @@ export function PickingModule() {
       return { ok: false, erro: "Código de barras não corresponde ao artigo esperado." };
     }
 
-    const quantidadeLida = Math.min(task.quantidadeLida + 1, task.quantidadeAlvo);
+    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "scan", taskId: task.id, barcode, criadoEm: Date.now() });
+    void flushOutbox(aplicarSincronizado);
+    setVista("picking");
+    return { ok: true };
+  }
+
+  // Aplica o pick localmente (ADR-007/ADR-022) e decide o próximo passo
+  // sozinho: se a linha ainda não está completa, volta à leitura para o
+  // resto da quantidade (pode vir de outro alvéolo); se ficou completa, o
+  // próprio PickAlveolo mostra a confirmação e chama handleCompleted.
+  async function handlePick(task: PickingTask, alveoloId: string, quantidade: number) {
+    const quantidadeLida = Math.min(task.quantidadeLida + quantidade, task.quantidadeAlvo);
     const completo = quantidadeLida >= task.quantidadeAlvo;
     const atualizado: PickingTask = {
       ...task,
@@ -121,16 +137,14 @@ export function PickingModule() {
 
     await db.tasks.put(atualizado);
     const agora = Date.now();
-    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "scan", taskId: task.id, barcode, criadoEm: agora });
+    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "pick", taskId: task.id, alveoloId, quantidade, criadoEm: agora });
     if (completo) {
-      // +1 garante que fica sempre depois do "scan" na fila, mesmo que os
-      // dois caiam no mesmo milissegundo.
       await db.outbox.add({ opId: crypto.randomUUID(), tipo: "confirm", taskId: task.id, criadoEm: agora + 1 });
     }
 
     setTasks((prev) => prev.map((t) => (t.id === task.id ? atualizado : t)));
     void flushOutbox(aplicarSincronizado);
-    return { ok: true };
+    if (!completo) setVista("leitura");
   }
 
   // Ao concluir uma linha, avança automaticamente para a próxima da rota
@@ -227,8 +241,16 @@ export function PickingModule() {
         <ScanTask
           task={selectedTask}
           onScan={(barcode) => handleScan(selectedTask, barcode)}
-          onCompleted={handleCompleted}
           onVerLista={() => setVista("lista")}
+        />
+      )}
+
+      {vista === "picking" && selectedTask && (
+        <PickAlveolo
+          task={selectedTask}
+          onConfirmar={(alveoloId, quantidade) => void handlePick(selectedTask, alveoloId, quantidade)}
+          onCancelar={() => setVista("leitura")}
+          onCompleted={handleCompleted}
         />
       )}
     </main>

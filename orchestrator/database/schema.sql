@@ -683,6 +683,25 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Sku, novo.Ean, novo.Descricao, novo.UnidadesPorCaixa, novo.ComprimentoCaixaCm, novo.LarguraCaixaCm, novo.AlturaCaixaCm, novo.PesoUnitarioKg, novo.ClasseEmpilhamento, novo.CaixasPorPaleteCompleta);
 GO
 
+-- Stock de exemplo por alvéolo (SA) — RF-PIC: o operador escolhe o
+-- alvéolo onde está de entre os que têm stock do artigo, na zona onde
+-- se encontra (ver PickingEndpoints, endpoint /alveolos). SKU-1001 tem
+-- stock em dois alvéolos da mesma zona (zona-a) de propósito, para o
+-- ecrã mostrar mesmo uma escolha real. Sem WHEN MATCHED/UPDATE (ao
+-- contrário dos MERGE acima): isto é dado "vivo" que o próprio picking
+-- vai decrementando (como Plataformas/MISSAO mais abaixo) — corrida
+-- outra vez, não pode repor o stock ao valor inicial por cima do que
+-- já foi picado.
+IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-1001' AND AlveoloId = N'alv-a0103')
+    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-1001', N'alv-a0103', 15);
+IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-1001' AND AlveoloId = N'alv-a0211')
+    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-1001', N'alv-a0211', 5);
+IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-2044' AND AlveoloId = N'alv-a0211')
+    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-2044', N'alv-a0211', 10);
+IF NOT EXISTS (SELECT 1 FROM dbo.SA WHERE Sku = N'SKU-3390' AND AlveoloId = N'alv-b0402')
+    INSERT INTO dbo.SA (Sku, AlveoloId, Quantidade) VALUES (N'SKU-3390', N'alv-b0402', 12);
+GO
+
 -- Ordem de preparação de exemplo — simula o que chegaria já composta
 -- de outro software (cliente/data/morada e os PS que a compõem já
 -- decididos lá), tipificada e despachada, com a plataforma e a missão

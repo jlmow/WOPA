@@ -17,3 +17,10 @@ export interface MissionSummary {
   totalLinhas: number;
   linhasConcluidas: number;
 }
+
+export interface AlveoloComStock {
+  alveoloId: string;
+  codigo: string;
+  quantidadeDisponivel: number;
+  sugestaoQuantidade: number;
+}

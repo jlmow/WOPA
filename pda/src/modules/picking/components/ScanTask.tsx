@@ -4,13 +4,10 @@ import type { PickingTask } from "../types";
 interface Props {
   task: PickingTask;
   onScan: (barcode: string) => Promise<{ ok: true } | { ok: false; erro: string }>;
-  onCompleted: (taskId: string) => void;
   onVerLista: () => void;
 }
 
-const ADVANCE_DELAY_MS = 600;
-
-export function ScanTask({ task, onScan, onCompleted, onVerLista }: Props) {
+export function ScanTask({ task, onScan, onVerLista }: Props) {
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState<{ text: string; kind: "erro" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,19 +21,6 @@ export function ScanTask({ task, onScan, onCompleted, onVerLista }: Props) {
     setBusy(false);
     inputRef.current?.focus();
   }, [task.id]);
-
-  const completo = task.quantidadeLida >= task.quantidadeAlvo;
-
-  // A leitura é validada e aplicada localmente (ADR-007) — não há chamada de
-  // rede a aguardar aqui, por isso o ecrã reage sempre na hora, com ou sem
-  // ligação. Quando a linha fica concluída, avança sozinho para a seguinte.
-  useEffect(() => {
-    if (task.estado !== "Concluida") return;
-    setMessage({ text: "Linha concluída. A avançar…", kind: "info" });
-    const temporizador = window.setTimeout(() => onCompleted(task.id), ADVANCE_DELAY_MS);
-    return () => window.clearTimeout(temporizador);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task.estado, task.id]);
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
@@ -80,10 +64,10 @@ export function ScanTask({ task, onScan, onCompleted, onVerLista }: Props) {
           value={barcode}
           onChange={(e) => setBarcode(e.target.value)}
           placeholder="Ler código de barras"
-          disabled={completo || busy}
+          disabled={busy}
           autoComplete="off"
         />
-        <button type="submit" disabled={completo || busy || !barcode.trim()}>
+        <button type="submit" disabled={busy || !barcode.trim()}>
           Registar leitura
         </button>
       </form>

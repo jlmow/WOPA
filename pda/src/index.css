@@ -365,6 +365,11 @@ button {
   color: var(--text-muted);
 }
 
+.option-card--selecionado {
+  background: var(--card-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .option-card__codigo {
   font-family: var(--sans-font);
   font-weight: 700;

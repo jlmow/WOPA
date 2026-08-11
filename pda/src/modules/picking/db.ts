@@ -3,9 +3,11 @@ import type { PickingTask } from "./types";
 
 export interface OutboxEntry {
   opId: string;
-  tipo: "scan" | "confirm";
+  tipo: "scan" | "pick" | "confirm";
   taskId: string;
   barcode?: string;
+  alveoloId?: string;
+  quantidade?: number;
   criadoEm: number;
 }
 
