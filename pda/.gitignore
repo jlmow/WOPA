@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android (ADR-023) -- código do wrapper fica versionado (android/), mas
+# não o que o Gradle/Android Studio geram localmente, nem segredos de
+# assinatura, nem o .apk compilado (fica fora do git, ver android/BUILD.md).
+android/local.properties
+android/.gradle
+android/build
+android/app/build
+android/capacitor-cordova-android-plugins/build
+android/*.keystore
+android/*.jks
+android/key.properties
+public/wopa-pda.apk

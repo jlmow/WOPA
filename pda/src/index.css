@@ -465,7 +465,17 @@ button {
   font-weight: 600;
 }
 
-/* Estado de ligação ao servidor, em todos os ecrãs (ADR-009) */
+/* Barra de topo persistente: estado de ligação (ADR-009) + instalar em
+   Android (ADR-023), em todos os ecrãs */
+.root-layout__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--band-bg);
+  border-bottom: 1px solid var(--border);
+}
+
 .connection-status {
   display: flex;
   align-items: center;
@@ -474,9 +484,16 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 6px 16px;
-  background: var(--band-bg);
-  border-bottom: 1px solid var(--border);
+}
+
+.install-android-link {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  padding: 4px 8px;
 }
 
 .connection-status__dot {

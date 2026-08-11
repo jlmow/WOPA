@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Permite tráfego HTTP (não cifrado) só para o host interno do orchestrator/
+  pda -- ADR-023: rede interna da empresa, sem domínio público, por isso
+  sem HTTPS possível. Nada mais neste dispositivo fica autorizado a HTTP.
+
+  IMPORTANTE: o domain abaixo tem de ser exatamente o mesmo host de
+  capacitor.config.ts (WOPA_PDA_URL) -- muda os dois juntos antes de
+  compilar para um servidor diferente.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">172.16.4.15</domain>
+    </domain-config>
+</network-security-config>

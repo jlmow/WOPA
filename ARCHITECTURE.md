@@ -1409,6 +1409,50 @@ começar pela Fase 1 e crescer para a Fase 2.
   scan (o input do código de barras mantém-se sempre focado, ADR
   original do módulo picking).
 
+### ADR-023 — Instalar o pda em Android via wrapper Capacitor (não TWA), sem HTTPS
+
+- **Contexto:** o cliente pediu instalação em Android como app (APK),
+  com atualização automática depois de instalada uma vez. O caminho
+  padrão para uma PWA (já é uma, ADR-002, com service worker via
+  vite-plugin-pwa) seria um **TWA** (Trusted Web Activity) — mas isso
+  exige HTTPS com certificado confiável (verificação por Digital Asset
+  Links). Confirmado com o cliente: "vai ser sempre IP ou hostname
+  interno... é uma app para rede interna e uso interno dentro da
+  empresa" — sem domínio público, sem CA confiável ao alcance sem
+  atrito operacional considerável (montar CA interna + instalar em
+  cada telemóvel).
+- **Decisão:** wrapper **Capacitor** em vez de TWA — um `WebView`
+  Android fino, sem código nenhum do `pda` embrulhado, sempre a
+  apontar para o URL real do servidor (`pda/capacitor.config.ts`).
+  Cleartext (HTTP) autorizado só para esse host específico via
+  `network_security_config.xml` — nada mais no dispositivo fica
+  autorizado a HTTP. Dá exatamente a mesma propriedade que o TWA
+  daria: instala-se uma vez, cada arranque carrega a versão mais
+  recente publicada no IIS, sem mecanismo de atualização nenhum a
+  gerir (não há nada para atualizar no telefone — é sempre a mesma
+  página web a carregar).
+- **Scaffold feito, compilação por fazer:** `npx cap add android`
+  gerou `pda/android/` (projeto Gradle completo, versionado — exceto
+  `build/`, `.gradle/`, `local.properties` e chaves de assinatura,
+  nunca commitados). Este sandbox não tem acesso à rede do Android SDK
+  (`dl.google.com` bloqueado pelo proxy de saída) — só Java/Gradle,
+  sem SDK — por isso não foi possível compilar um `.apk` real aqui.
+  Guia completo em `pda/android/BUILD.md` para compilar numa máquina
+  com Android Studio.
+- **Cabeçalho do pda:** ligação "Instalar em Android" persistente em
+  todos os ecrãs (`RootLayout.tsx`, ao lado do indicador de ligação já
+  existente do ADR-009), a apontar para `/wopa-pda.apk` — ficheiro
+  estático que fica em `pda/public/` depois de compilado (ver
+  BUILD.md), servido pelo próprio `pda`. Escondida sozinha quando a
+  app já está a correr dentro do wrapper instalado
+  (`window.Capacitor?.isNativePlatform?.()`), para não mostrar
+  "instalar" a quem já instalou.
+- **Risco documentado:** o host do servidor fica fixo dentro do APK
+  (`capacitor.config.ts` + `network_security_config.xml`, os dois têm
+  de bater certo) — ao contrário do resto da app, que atualiza sozinha
+  a cada arranque, mudar o IP/hostname do servidor implica recompilar
+  e reinstalar o APK em todos os dispositivos.
+
 ---
 
 ## 8. Em aberto
