@@ -401,9 +401,21 @@ $orchestratorOut = Join-Path $InstallRoot "orchestrator"
 # (ver Restart-WebAppPool).
 Import-Module WebAdministration -ErrorAction SilentlyContinue
 if (Test-Path "IIS:\AppPools\WOPA-Orchestrator") {
-    Write-Step "A parar o AppPool WOPA-Orchestrator (para libertar o ficheiro antes do publish)"
-    Stop-WebAppPool -Name "WOPA-Orchestrator" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    # Stop-WebAppPool também lança quando já está parado (ex.: tentativa
+    # anterior falhou depois de parar e antes de voltar a arrancar) --
+    # mesma questão do Restart-WebAppPool mais abaixo, por isso o mesmo
+    # padrão: confirma o estado primeiro, só para se estiver a correr.
+    try {
+        $poolState = (Get-WebAppPoolState -Name "WOPA-Orchestrator" -ErrorAction Stop).Value
+        if ($poolState -ne "Stopped") {
+            Write-Step "A parar o AppPool WOPA-Orchestrator (para libertar o ficheiro antes do publish)"
+            Stop-WebAppPool -Name "WOPA-Orchestrator"
+            Start-Sleep -Seconds 2
+        }
+    }
+    catch {
+        Write-Warn2 "Não consegui parar o AppPool WOPA-Orchestrator ($($_.Exception.Message))"
+    }
 }
 
 if (Test-Command "dotnet") {
