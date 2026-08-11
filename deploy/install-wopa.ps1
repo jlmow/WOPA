@@ -393,6 +393,19 @@ Write-Step "A publicar o orchestrator"
 $orchestratorSrc = Join-Path $SourceRoot "orchestrator\src\Orchestrator.Api"
 $orchestratorOut = Join-Path $InstallRoot "orchestrator"
 
+# Num redeploy (o AppPool já existe de uma instalação anterior), o IIS
+# Worker Process mantém a DLL carregada em memória (hostingModel
+# inprocess) e bloqueia-a para escrita -- "dotnet publish" falha a
+# copiar por cima. Sem efeito na primeira instalação (o AppPool ainda
+# não existe nesse caso). Reiniciado mais abaixo, depois do publish
+# (ver Restart-WebAppPool).
+Import-Module WebAdministration -ErrorAction SilentlyContinue
+if (Test-Path "IIS:\AppPools\WOPA-Orchestrator") {
+    Write-Step "A parar o AppPool WOPA-Orchestrator (para libertar o ficheiro antes do publish)"
+    Stop-WebAppPool -Name "WOPA-Orchestrator" -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
 if (Test-Command "dotnet") {
     & dotnet publish $orchestratorSrc -c Release -o $orchestratorOut
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish falhou (código $LASTEXITCODE)." }
