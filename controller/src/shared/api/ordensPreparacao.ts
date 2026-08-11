@@ -23,6 +23,8 @@ export interface OrdemPreparacaoResumo {
   pesoKg: number | null;
   tipoIndicativo: string | null;
   plataformas: PlataformaResumo[];
+  urgente: boolean;
+  dataLimite: string | null;
 }
 
 export const ordensPreparacaoApi = {
@@ -36,5 +38,12 @@ export const ordensPreparacaoApi = {
     apiFetch<OrdemPreparacaoResumo>(`/api/ordens-preparacao/${id}/tipificar`, {
       method: "POST",
       body: JSON.stringify({ alturaPaleteCm }),
+    }),
+
+  // Etiqueta de urgência (ADR-027) — marcada pelo supervisor, não vem da origem.
+  marcarUrgente: (id: string, urgente: boolean, dataLimite: string | null): Promise<OrdemPreparacaoResumo> =>
+    apiFetch<OrdemPreparacaoResumo>(`/api/ordens-preparacao/${id}/urgente`, {
+      method: "POST",
+      body: JSON.stringify({ urgente, dataLimite }),
     }),
 };

@@ -1525,10 +1525,90 @@ começar pela Fase 1 e crescer para a Fase 2.
   Google serve por omissão. `<link rel="preload">` no `index.html`
   de cada app para evitar flash de texto sem estilo.
 
+### ADR-027 — Reunião de planeamento: capacidade/despacho com data no controller, motivos de exceção no pda
+
+- **Contexto:** o cliente gravou uma reunião interna sobre o desenho do
+  `controller` e do `pda`-Picking e pediu para enquadrar contra tudo o
+  que já existia, esclarecer o que ficou por fechar, e só avançar
+  depois de decisões explícitas — ver a transcrição completa na
+  conversa. Quatro decisões saíram dessa troca:
+  1. **Identificador de "caixa" = EAN do artigo**, não um ID único por
+     caixa. Já era o desenho existente (`MissaoLinha.CodigoBarras`) —
+     zero mudança de schema. Fica documentado que uma etiqueta única
+     por caixa é um passo maior, só a fazer se dados reais mostrarem
+     necessidade.
+  2. **`controller` e `pda` avançam com a mesma prioridade** — ambos
+     endereçados nesta ADR.
+  3. **Missão pode nascer "Planeada"** (não só quando o dia chega) —
+     novo estado antes de "Criada" (A.13 estende-se).
+  4. **`packing` (double-check/consolidação obrigatório) fica de fora
+     por agora** — não criado nenhum scaffold, só desenhado aqui como
+     dependência futura.
+- **Controller — capacidade e despacho com data:**
+  - Nova tabela `Celulas` (capacidade diária **constante**, não um
+    calendário completo — "a capacidade inicial pode ser estimada e
+    afinada com histórico ao fim de 3-6 meses", tal como discutido).
+    Seed com 2 células de exemplo (500 unidades/dia cada).
+  - `POST /api/plataformas/{id}/despachar` ganha `celulaId` e
+    `dataDespacho` opcionais. Data futura → Missão nasce com
+    `Estado="Planeada"` e `DataPlaneada` preenchida, em vez do
+    `"Criada"` imediato de sempre. Sem transição de estado explícita
+    quando o dia chega — `ObterOuAtribuirMissaoAtualAsync` (o pda a
+    pedir trabalho) já trata "Planeada com `DataPlaneada` ≤ hoje" como
+    equivalente a "Criada", poupando um job/cron só para isto.
+  - Novo `GET /api/celulas/carga?data=`: carga vs. capacidade por
+    célula nesse dia — "unidades" é a soma de `QuantidadeAlvo` das
+    linhas das missões atribuídas à célula (métrica simples e
+    **deliberadamente provisória**, por afinar com histórico real —
+    o próprio cliente reconheceu nesta reunião que os primeiros meses
+    vão ter previsões erradas).
+  - Nova página `controller` "Capacidade": grelha por célula, um dia
+    de cada vez (seletor de data), carga/capacidade/%, marca "saturada"
+    a partir de 100%.
+  - `OrdensPreparacao` ganha `Urgente` (bool) + `DataLimite` — marcado
+    pelo supervisor no `controller` (`POST .../urgente`), nunca vem da
+    origem. Lista de Ordens de Preparação ordena urgentes primeiro —
+    fila com prioridade, mas **sem** arrastar-para-reordenar ainda
+    (fica em aberto, ver abaixo).
+- **PDA — motivos de exceção e confirmação rápida:**
+  - `SL` (ledger de movimentos, ADR-022) ganha `Motivo` — obrigatório
+    no ecrã (`PickAlveolo`) só quando a quantidade picada difere da
+    sugerida ("Falta de stock" / "Caixa incompleta" / "Dano" / "Outro")
+    — é exatamente o travão contra "pico 10 e levo 9" que saiu da
+    reunião, sem obrigar a digitar sempre.
+  - Novo botão "Confirmar N" de um só toque quando a quantidade
+    escolhida bate certo com a sugestão — não precisa de tocar no
+    teclado nem escolher motivo nenhum. Só aparece o campo de motivo
+    quando o operador já mudou o número.
+- **Migração real, não só CREATE TABLE:** como já existe uma BD em
+  produção sem estas colunas, `schema.sql` teve pela primeira vez de
+  usar `ALTER TABLE` guardado por existência de coluna (secção 22),
+  não só o padrão `CREATE TABLE IF NOT EXISTS` do resto do ficheiro
+  (ADR-017) — continua idempotente, mas é a primeira vez que este
+  ficheiro precisa mesmo de "migrar" algo já implantado.
+- **Deliberadamente fora de alcance desta ADR** (ver Em aberto): matriz
+  de validação por tipo de plataforma (palete inteira/caixa fechada/
+  fracionado/vertical — hoje o fluxo do ADR-022 trata tudo da mesma
+  forma), put-to/transferência para zona de destino, integração
+  vertical, arrastar-para-reordenar a fila de urgências, capacidade por
+  zona (só célula por agora), modelo de KPIs (produtividade/qualidade/
+  serviço), e o próprio `packing`.
+
 ---
 
 ## 8. Em aberto
 
+- **Da reunião de planeamento (ADR-027), por implementar quando houver
+  mais clareza:** matriz de validação no `pda` por tipo de plataforma
+  (P0/caixa fechada/fracionado/vertical); put-to/transferência para
+  zona de destino (frigorífico/consolidação/buffer) com scan próprio;
+  integração com o vertical (que eventos/confirmações ele expõe);
+  arrastar-para-reordenar a fila de urgências no `controller`, com
+  impacto visível ("se meteres isto hoje, o que escorrega para
+  amanhã?"); capacidade por zona/corredor (só célula está feito);
+  modelo de KPIs (produtividade + qualidade + serviço, não só
+  velocidade); `packing` (double-check/consolidação obrigatório) —
+  scaffold nenhum ainda, por pedido explícito do cliente.
 - **Origem do stock real por alvéolo (ADR-022):** `SA`/`SL` calculam-se
   sozinhos a partir dos movimentos (decisão do cliente), mas falta o
   import inicial — hoje só os 3 alvéolos de exemplo têm `SA`, nada

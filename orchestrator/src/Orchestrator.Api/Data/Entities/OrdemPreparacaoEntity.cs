@@ -18,6 +18,10 @@ public class OrdemPreparacaoEntity
     public decimal? AlturaPaleteCm { get; set; }
     public DateTime RecebidaEm { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Marcada pelo supervisor no controller (ADR-027) — não vem da origem.</summary>
+    public bool Urgente { get; set; }
+    public DateTime? DataLimite { get; set; }
+
     public List<OrdemSeparacaoEntity> Ps { get; set; } = new();
     public List<PlataformaEntity> Plataformas { get; set; } = new();
 }

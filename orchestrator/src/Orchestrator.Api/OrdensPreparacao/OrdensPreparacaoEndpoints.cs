@@ -178,6 +178,23 @@ public static class OrdensPreparacaoEndpoints
             return Results.Ok(dto);
         })
         .WithName("TipificarOrdemPreparacao");
+
+        // ADR-027: etiqueta de urgência do controller (não vem da origem) --
+        // permite ao supervisor marcar uma ordem para subir na fila, com
+        // data limite opcional.
+        group.MapPost("/{id}/urgente", async (string id, UrgenteRequest pedido, WopaDbContext db, CubicagemService cubicagem) =>
+        {
+            var ordem = await db.OrdensPreparacao.SingleOrDefaultAsync(o => o.Id == id);
+            if (ordem is null) return Results.NotFound();
+
+            ordem.Urgente = pedido.Urgente;
+            ordem.DataLimite = pedido.DataLimite;
+            await db.SaveChangesAsync();
+
+            var dto = await ParaResumoAsync(db, id, cubicagem);
+            return Results.Ok(dto);
+        })
+        .WithName("MarcarOrdemPreparacaoUrgente");
     }
 
     private static async Task<OrdemPreparacaoResumo?> ParaResumoAsync(WopaDbContext db, string id, CubicagemService cubicagem)
@@ -215,6 +232,7 @@ public static class OrdensPreparacaoEndpoints
         return new OrdemPreparacaoResumo(
             ordem.Id, ordem.Cliente, ordem.DataEntrega, ordem.MoradaEntrega, ordem.Estado, ordem.AlturaPaleteCm,
             ordem.RecebidaEm, ordem.Ps.Count, volumeLitros, pesoKg, tipoIndicativo,
-            ordem.Plataformas.Select(p => new PlataformaResumo(p.Id, p.Codigo, p.TipoPlataformaCodigo, p.IndiceCamada, p.ClasseCamada, p.Estado, p.CelulaDestino)).ToList());
+            ordem.Plataformas.Select(p => new PlataformaResumo(p.Id, p.Codigo, p.TipoPlataformaCodigo, p.IndiceCamada, p.ClasseCamada, p.Estado, p.CelulaDestino)).ToList(),
+            ordem.Urgente, ordem.DataLimite);
     }
 }

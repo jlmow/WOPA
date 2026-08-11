@@ -4,12 +4,17 @@ import { pickingApi } from "../api";
 
 interface Props {
   task: PickingTask;
-  onConfirmar: (alveoloId: string, quantidade: number) => void;
+  onConfirmar: (alveoloId: string, quantidade: number, motivo?: string) => void;
   onCancelar: () => void;
   onCompleted: (taskId: string) => void;
 }
 
 const ADVANCE_DELAY_MS = 600;
+
+// Motivos de exceção (ADR-027) — obrigatório escolher um quando a
+// quantidade picada difere da sugerida, para não permitir "pico 10 e
+// levo 9" sem deixar rasto do porquê.
+const MOTIVOS_EXCECAO = ["Falta de stock", "Caixa incompleta", "Dano", "Outro"];
 
 /**
  * Passo obrigatório depois do scan (ADR-022): o operador escolhe de que
@@ -23,6 +28,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
   const [erroCarregar, setErroCarregar] = useState<string | null>(null);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState<number>(0);
+  const [motivo, setMotivo] = useState<string>("");
   const [erro, setErro] = useState<string | null>(null);
   const quantidadeRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +73,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
   function selecionar(opcao: AlveoloComStock) {
     setSelecionadoId(opcao.alveoloId);
     setQuantidade(opcao.sugestaoQuantidade);
+    setMotivo("");
     setErro(null);
     requestAnimationFrame(() => {
       quantidadeRef.current?.focus();
@@ -76,15 +83,31 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
 
   const selecionado = opcoes?.find((o) => o.alveoloId === selecionadoId) ?? null;
   const maximo = selecionado ? Math.min(task.quantidadeAlvo - task.quantidadeLida, selecionado.quantidadeDisponivel) : 0;
+  const ehExcecao = selecionado !== null && quantidade !== selecionado.sugestaoQuantidade;
 
-  function handleConfirmar(e: React.FormEvent) {
-    e.preventDefault();
+  function confirmarComQuantidade(qtd: number, motivoEscolhido?: string) {
     if (!selecionado) return;
-    if (quantidade <= 0 || quantidade > maximo) {
+    if (qtd <= 0 || qtd > maximo) {
       setErro(`Introduz uma quantidade entre 1 e ${maximo}.`);
       return;
     }
-    onConfirmar(selecionado.alveoloId, quantidade);
+    if (qtd !== selecionado.sugestaoQuantidade && !motivoEscolhido) {
+      setErro("Escolhe um motivo para a quantidade ser diferente da sugerida.");
+      return;
+    }
+    onConfirmar(selecionado.alveoloId, qtd, motivoEscolhido);
+  }
+
+  // Toque único para o caso comum (caixa fechada, nada de estranho):
+  // aceita a sugestão sem tocar no teclado nem escolher motivo nenhum.
+  function confirmarSugerido() {
+    if (!selecionado) return;
+    confirmarComQuantidade(selecionado.sugestaoQuantidade);
+  }
+
+  function handleConfirmar(e: React.FormEvent) {
+    e.preventDefault();
+    confirmarComQuantidade(quantidade, ehExcecao ? motivo || undefined : undefined);
   }
 
   return (
@@ -147,7 +170,20 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
             ))}
           </ul>
 
-          <label htmlFor="pick-quantidade">Quantidade a separar</label>
+          {selecionado && !ehExcecao && (
+            <button
+              type="button"
+              className="confirm-button"
+              onClick={confirmarSugerido}
+              data-testid="confirmar-sugerido"
+            >
+              Confirmar {selecionado.sugestaoQuantidade}
+            </button>
+          )}
+
+          <label htmlFor="pick-quantidade">
+            {ehExcecao ? "Quantidade diferente da sugerida" : "Ou introduz outra quantidade"}
+          </label>
           <input
             id="pick-quantidade"
             ref={quantidadeRef}
@@ -160,7 +196,30 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
             autoComplete="off"
           />
 
-          <button type="submit" disabled={!selecionado || quantidade <= 0} data-testid="confirmar-pick">
+          {ehExcecao && (
+            <>
+              <label htmlFor="pick-motivo">Motivo</label>
+              <select
+                id="pick-motivo"
+                data-testid="motivo-select"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+              >
+                <option value="">Escolher motivo…</option>
+                {MOTIVOS_EXCECAO.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <button
+            type="submit"
+            disabled={!selecionado || quantidade <= 0 || (ehExcecao && !motivo)}
+            data-testid="confirmar-pick"
+          >
             Confirmar
           </button>
 

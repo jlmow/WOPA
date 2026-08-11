@@ -18,6 +18,10 @@ public class MissaoEntity
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
     public DateTime? ConcluidaEm { get; set; }
 
+    /// <summary>Despacho com data (ADR-027) — só preenchido quando "Planeada" para um dia futuro.</summary>
+    public DateOnly? DataPlaneada { get; set; }
+    public string? CelulaId { get; set; }
+
     /// <summary>Picking | Packing | Transporte | Abastecimento | Reposicao | P0.</summary>
     public string CentroTrabalho { get; set; } = "Picking";
     public string? PlataformaId { get; set; }

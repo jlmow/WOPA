@@ -14,4 +14,7 @@ public class MovimentoStockEntity
     public int Quantidade { get; set; }
     public string? MissaoLinhaId { get; set; }
     public DateTime CriadoEm { get; set; }
+
+    /// <summary>Motivo da exceção (ADR-027) — só preenchido quando a quantidade picada difere da sugerida (ex.: "Falta de stock").</summary>
+    public string? Motivo { get; set; }
 }

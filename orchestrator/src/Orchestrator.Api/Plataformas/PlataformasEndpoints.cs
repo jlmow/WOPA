@@ -60,13 +60,20 @@ public static class PlataformasEndpoints
 
             var zonaId = linhasPs.Select(l => l.Alveolo?.ZonaId).FirstOrDefault(z => z is not null);
 
+            // ADR-027: despacho com data. Um dia futuro faz a Missão nascer
+            // "Planeada" -- só fica disponível para o pda quando o dia chegar.
+            var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+            var planeadaParaOFuturo = pedido.DataDespacho is { } data && data > hoje;
+
             var missao = new MissaoEntity
             {
                 Id = Guid.NewGuid().ToString("n"),
                 Codigo = $"M-{plataforma.Codigo}",
                 ZonaId = zonaId,
                 CentroTrabalho = "Picking",
-                Estado = "Criada",
+                Estado = planeadaParaOFuturo ? "Planeada" : "Criada",
+                DataPlaneada = pedido.DataDespacho,
+                CelulaId = pedido.CelulaId,
                 PlataformaId = plataforma.Id,
                 Linhas = linhasPs.Select(l =>
                 {

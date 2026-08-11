@@ -126,7 +126,7 @@ export function PickingModule() {
   // sozinho: se a linha ainda não está completa, volta à leitura para o
   // resto da quantidade (pode vir de outro alvéolo); se ficou completa, o
   // próprio PickAlveolo mostra a confirmação e chama handleCompleted.
-  async function handlePick(task: PickingTask, alveoloId: string, quantidade: number) {
+  async function handlePick(task: PickingTask, alveoloId: string, quantidade: number, motivo?: string) {
     const quantidadeLida = Math.min(task.quantidadeLida + quantidade, task.quantidadeAlvo);
     const completo = quantidadeLida >= task.quantidadeAlvo;
     const atualizado: PickingTask = {
@@ -137,7 +137,7 @@ export function PickingModule() {
 
     await db.tasks.put(atualizado);
     const agora = Date.now();
-    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "pick", taskId: task.id, alveoloId, quantidade, criadoEm: agora });
+    await db.outbox.add({ opId: crypto.randomUUID(), tipo: "pick", taskId: task.id, alveoloId, quantidade, motivo, criadoEm: agora });
     if (completo) {
       await db.outbox.add({ opId: crypto.randomUUID(), tipo: "confirm", taskId: task.id, criadoEm: agora + 1 });
     }
@@ -248,7 +248,7 @@ export function PickingModule() {
       {vista === "picking" && selectedTask && (
         <PickAlveolo
           task={selectedTask}
-          onConfirmar={(alveoloId, quantidade) => void handlePick(selectedTask, alveoloId, quantidade)}
+          onConfirmar={(alveoloId, quantidade, motivo) => void handlePick(selectedTask, alveoloId, quantidade, motivo)}
           onCancelar={() => setVista("leitura")}
           onCompleted={handleCompleted}
         />

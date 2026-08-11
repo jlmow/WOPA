@@ -413,7 +413,10 @@ BEGIN
         PlataformaId    NVARCHAR(50)  NULL,
         UtilizadorId    NVARCHAR(50)  NULL,   -- operador a quem a missão está atribuída
         TerminalId      NVARCHAR(50)  NULL,   -- PDA que a está a executar
-        -- Criada | Atribuida | EmExecucao | Pausada | Concluida | FechadaIncompleta (A.13)
+        -- Planeada | Criada | Atribuida | EmExecucao | Pausada | Concluida | FechadaIncompleta
+        -- (A.13 + ADR-027: "Planeada" é novo -- despacho com data futura,
+        -- ver DataPlaneada abaixo; só entra no circuito normal quando o
+        -- dia chega, tratado como "Criada" a partir daí)
         Estado          NVARCHAR(20)  NOT NULL DEFAULT (N'Criada'),
         -- Rutura | FimTurno | MudancaPrioridade | Avaria (A.13)
         MotivoPausa     NVARCHAR(30)  NULL,
@@ -762,6 +765,69 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (Id, MissaoId, Sku, Descricao, CodigoBarras, AlveoloId, Plataforma, TipoPlataformaCodigo, QuantidadeAlvo)
     VALUES (novo.Id, novo.MissaoId, novo.Sku, novo.Descricao, novo.CodigoBarras, novo.AlveoloId, novo.Plataforma, novo.TipoPlataformaCodigo, novo.QuantidadeAlvo);
+GO
+
+-------------------------------------------------------------------------
+-- 21. Celulas — recurso de capacidade (packing/montagem/consolidação),
+--     ADR-027. Capacidade diária simples (constante por célula) para
+--     arrancar — não um calendário completo; afina-se com histórico ao
+--     fim de 3-6 meses, tal como discutido com o cliente.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Celulas' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.Celulas
+    (
+        Id                       NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        Codigo                   NVARCHAR(30)  NOT NULL,
+        Nome                     NVARCHAR(100) NOT NULL,
+        CapacidadeDiariaUnidades INT           NOT NULL DEFAULT (0),
+        Ativa                    BIT           NOT NULL DEFAULT (1)
+    );
+END
+GO
+
+-------------------------------------------------------------------------
+-- 22. Migrações aditivas (ADR-027) — colunas novas em tabelas já
+--     existentes em produção. Ao contrário do resto deste ficheiro
+--     ("clean script", ADR-017), isto usa ALTER TABLE porque já existe
+--     uma BD real no cliente sem estas colunas — um CREATE TABLE IF NOT
+--     EXISTS não as acrescentaria retroativamente. Guardado por
+--     existência da coluna, para poder correr outra vez em segurança.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'DataPlaneada')
+    ALTER TABLE dbo.MISSAO ADD DataPlaneada DATE NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.MISSAO') AND name = N'CelulaId')
+    ALTER TABLE dbo.MISSAO ADD CelulaId NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_MISSAO_Celula')
+    ALTER TABLE dbo.MISSAO ADD CONSTRAINT FK_MISSAO_Celula FOREIGN KEY (CelulaId) REFERENCES dbo.Celulas (Id);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensPreparacao') AND name = N'Urgente')
+    ALTER TABLE dbo.OrdensPreparacao ADD Urgente BIT NOT NULL DEFAULT (0);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.OrdensPreparacao') AND name = N'DataLimite')
+    ALTER TABLE dbo.OrdensPreparacao ADD DataLimite DATETIME2 NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.SL') AND name = N'Motivo')
+    ALTER TABLE dbo.SL ADD Motivo NVARCHAR(50) NULL;
+GO
+
+-------------------------------------------------------------------------
+-- 23. Seed — Celulas de exemplo.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Celulas WHERE Id = N'celula-1')
+    INSERT INTO dbo.Celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-1', N'CELULA-1', N'Célula 1', 500);
+IF NOT EXISTS (SELECT 1 FROM dbo.Celulas WHERE Id = N'celula-2')
+    INSERT INTO dbo.Celulas (Id, Codigo, Nome, CapacidadeDiariaUnidades) VALUES (N'celula-2', N'CELULA-2', N'Célula 2', 500);
 GO
 
 PRINT 'Base de dados WOPA pronta.';

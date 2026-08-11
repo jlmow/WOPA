@@ -22,10 +22,12 @@ export const pickingApi = {
   alveolos: (id: string): Promise<AlveoloComStock[]> =>
     apiFetch<AlveoloComStock[]>(`/api/picking/tasks/${id}/alveolos`),
 
-  pick: (id: string, alveoloId: string, quantidade: number, operacaoId: string): Promise<PickingTask> =>
+  // motivo (ADR-027): obrigatório no ecrã quando a quantidade difere da
+  // sugerida (ex.: "Falta de stock") — ver PickAlveolo.
+  pick: (id: string, alveoloId: string, quantidade: number, motivo: string | undefined, operacaoId: string): Promise<PickingTask> =>
     apiFetch<PickingTask>(`/api/picking/tasks/${id}/pick`, {
       method: "POST",
-      body: JSON.stringify({ alveoloId, quantidade, operacaoId }),
+      body: JSON.stringify({ alveoloId, quantidade, motivo, operacaoId }),
     }),
 
   confirm: (id: string, operacaoId: string): Promise<PickingTask> =>

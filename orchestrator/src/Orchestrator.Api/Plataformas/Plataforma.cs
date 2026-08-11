@@ -12,4 +12,8 @@ public record PlataformaDto(
     string Estado,
     string? MissaoId);
 
-public record DespacharRequest(string? CelulaDestino);
+// DataDespacho (ADR-027): dia para o qual o trabalho fica agendado. Vazio
+// ou hoje/passado -> comportamento antigo (Missão "Criada", disponível já).
+// Futuro -> Missão nasce "Planeada", só entra no circuito do pda quando o
+// dia chegar (ver PickingEndpoints.ObterOuAtribuirMissaoAtualAsync).
+public record DespacharRequest(string? CelulaDestino, string? CelulaId, DateOnly? DataDespacho);

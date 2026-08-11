@@ -8,7 +8,11 @@ public record ScanRequest(string Barcode, string? OperacaoId = null);
 
 public record ConfirmRequest(string? OperacaoId = null);
 
-public record PickRequest(string AlveoloId, int Quantidade, string? OperacaoId = null);
+// Motivo (ADR-027): obrigatório no pda quando a quantidade difere da
+// sugerida (ex.: "Falta de stock", "Caixa incompleta", "Dano") -- o
+// servidor não valida isto (não sabe qual era a sugestão original sem a
+// recalcular), a obrigatoriedade fica no ecrã do pda.
+public record PickRequest(string AlveoloId, int Quantidade, string? Motivo = null, string? OperacaoId = null);
 
 public record ErrorResponse(string Erro);
 
@@ -183,6 +187,7 @@ public static class PickingEndpoints
                 AlveoloId = request.AlveoloId,
                 Quantidade = request.Quantidade,
                 MissaoLinhaId = task.Id,
+                Motivo = request.Motivo,
                 CriadoEm = DateTime.UtcNow,
             });
 
@@ -285,15 +290,21 @@ public static class PickingEndpoints
     // "Uma missão de cada vez" (ADR-008): a mais antiga entre as ainda não
     // concluídas/fechadas do centro de trabalho Picking. Atribui-a
     // automaticamente (Criada -> Atribuida) na primeira vez que é pedida.
+    // ADR-027: uma Missão "Planeada" para um dia futuro (despacho com
+    // data) fica de fora até o dia chegar -- a partir daí conta como
+    // "Criada" para este efeito, sem transição de estado explícita
+    // nenhuma (poupa um job/cron só para isto).
     private static async Task<MissaoEntity?> ObterOuAtribuirMissaoAtualAsync(WopaDbContext db)
     {
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
         var missao = await db.Missoes
-            .Where(m => m.CentroTrabalho == "Picking" && m.Estado != "Concluida" && m.Estado != "FechadaIncompleta")
+            .Where(m => m.CentroTrabalho == "Picking" && m.Estado != "Concluida" && m.Estado != "FechadaIncompleta"
+                && (m.Estado != "Planeada" || m.DataPlaneada == null || m.DataPlaneada <= hoje))
             .OrderBy(m => m.CriadaEm)
             .FirstOrDefaultAsync();
         if (missao is null) return null;
 
-        if (missao.Estado == "Criada")
+        if (missao.Estado == "Criada" || missao.Estado == "Planeada")
         {
             missao.Estado = "Atribuida";
             missao.AtribuidaEm = DateTime.UtcNow;

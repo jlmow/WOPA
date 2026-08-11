@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ordensPreparacaoApi, type OrdemPreparacaoResumo } from "../shared/api/ordensPreparacao";
 import { plataformasApi, type Plataforma } from "../shared/api/plataformas";
+import { celulasApi, type Celula } from "../shared/api/celulas";
 
 const ESTADO_LABEL: Record<OrdemPreparacaoResumo["estado"], string> = {
   Aberta: "Aberta",
@@ -8,19 +9,28 @@ const ESTADO_LABEL: Record<OrdemPreparacaoResumo["estado"], string> = {
   Despachada: "Despachada",
 };
 
+function hoje(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function OrdensPreparacaoPage() {
   const [ordens, setOrdens] = useState<OrdemPreparacaoResumo[]>([]);
   const [plataformas, setPlataformas] = useState<Record<string, Plataforma>>({});
+  const [celulas, setCelulas] = useState<Celula[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [alturaPorOrdem, setAlturaPorOrdem] = useState<Record<string, string>>({});
   const [celulaPorPlataforma, setCelulaPorPlataforma] = useState<Record<string, string>>({});
+  const [dataPorPlataforma, setDataPorPlataforma] = useState<Record<string, string>>({});
   const [aProcessar, setAProcessar] = useState<string | null>(null);
 
   function carregar() {
-    Promise.all([ordensPreparacaoApi.listar(), plataformasApi.listar()])
-      .then(([listaOrdens, listaPlataformas]) => {
-        setOrdens(listaOrdens);
+    Promise.all([ordensPreparacaoApi.listar(), plataformasApi.listar(), celulasApi.listar()])
+      .then(([listaOrdens, listaPlataformas, listaCelulas]) => {
+        // Urgentes primeiro (ADR-027) -- fila com prioridade, sem ainda ser
+        // arrastar-para-reordenar (fica em aberto, ver ARCHITECTURE.md).
+        setOrdens([...listaOrdens].sort((a, b) => Number(b.urgente) - Number(a.urgente)));
         setPlataformas(Object.fromEntries(listaPlataformas.map((p) => [p.id, p])));
+        setCelulas(listaCelulas);
       })
       .catch((err) => setErro((err as Error).message));
   }
@@ -45,11 +55,26 @@ export function OrdensPreparacaoPage() {
     }
   }
 
+  async function alternarUrgente(ordem: OrdemPreparacaoResumo) {
+    setErro(null);
+    try {
+      await ordensPreparacaoApi.marcarUrgente(ordem.id, !ordem.urgente, ordem.dataLimite);
+      carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
+
   async function despachar(plataformaId: string) {
     setAProcessar(plataformaId);
     setErro(null);
     try {
-      await plataformasApi.despachar(plataformaId, celulaPorPlataforma[plataformaId] || null);
+      await plataformasApi.despachar(
+        plataformaId,
+        celulaPorPlataforma[plataformaId] || null,
+        celulaPorPlataforma[plataformaId] || null,
+        dataPorPlataforma[plataformaId] || null,
+      );
       carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -90,17 +115,33 @@ export function OrdensPreparacaoPage() {
       </div>
 
       {ordens.map((ordem) => (
-        <section key={ordem.id} className="panel" data-testid={`op-${ordem.id}`}>
+        <section
+          key={ordem.id}
+          className={`panel${ordem.urgente ? " panel--destaque" : ""}`}
+          data-testid={`op-${ordem.id}`}
+        >
           <div className="panel__header-row">
             <div>
-              <h2>{ordem.cliente}</h2>
+              <h2>
+                {ordem.urgente && <span className="status-tag status-tag--erro">Urgente</span>} {ordem.cliente}
+              </h2>
               <p className="page__subtitle">
                 {ordem.nPs} PS · {ordem.moradaEntrega ?? "sem morada"} · entrega {ordem.dataEntrega ?? "—"}
+                {ordem.dataLimite && <> · limite {new Date(ordem.dataLimite).toLocaleString("pt-PT")}</>}
               </p>
             </div>
-            <span className={`status-tag status-tag--op-${ordem.estado}`} data-testid={`op-estado-${ordem.id}`}>
-              {ESTADO_LABEL[ordem.estado]}
-            </span>
+            <div className="acoes-cell">
+              <button
+                className={`button button--small${ordem.urgente ? " button--primary" : ""}`}
+                onClick={() => alternarUrgente(ordem)}
+                data-testid={`urgente-${ordem.id}`}
+              >
+                {ordem.urgente ? "Desmarcar urgente" : "Marcar urgente"}
+              </button>
+              <span className={`status-tag status-tag--op-${ordem.estado}`} data-testid={`op-estado-${ordem.id}`}>
+                {ESTADO_LABEL[ordem.estado]}
+              </span>
+            </div>
           </div>
 
           <p>
@@ -152,6 +193,7 @@ export function OrdensPreparacaoPage() {
                   <th>Tipo</th>
                   <th>Camada</th>
                   <th>Célula</th>
+                  <th>Dia</th>
                   <th>Estado</th>
                   <th></th>
                 </tr>
@@ -170,11 +212,28 @@ export function OrdensPreparacaoPage() {
                         {despachada ? (
                           plat.celulaDestino ?? "—"
                         ) : (
-                          <input
-                            placeholder="ex. CELULA-1"
+                          <select
                             value={celulaPorPlataforma[plat.id] ?? ""}
                             onChange={(e) => setCelulaPorPlataforma((prev) => ({ ...prev, [plat.id]: e.target.value }))}
                             data-testid={`celula-${plat.id}`}
+                          >
+                            <option value="">Escolher célula…</option>
+                            {celulas.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nome}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        {!despachada && (
+                          <input
+                            type="date"
+                            min={hoje()}
+                            value={dataPorPlataforma[plat.id] ?? ""}
+                            onChange={(e) => setDataPorPlataforma((prev) => ({ ...prev, [plat.id]: e.target.value }))}
+                            data-testid={`data-despacho-${plat.id}`}
                           />
                         )}
                       </td>

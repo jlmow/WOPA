@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 const NAV_ITEMS = [
   { to: "/ordens-preparacao", label: "Ordens de Preparação", end: false },
   { to: "/missoes", label: "Missões", end: false },
+  { to: "/capacidade", label: "Capacidade", end: false },
   // Próximos ecrãs do controller (gestão de zonas, operadores, etc.) juntam-se aqui.
 ];
 

@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Orchestrator.Api.Artigos;
+using Orchestrator.Api.Celulas;
 using Orchestrator.Api.Config;
 using Orchestrator.Api.Data;
 using Orchestrator.Api.Missoes;
@@ -67,5 +68,6 @@ app.MapArtigosEndpoints();
 app.MapOrdensPreparacaoEndpoints();
 app.MapPlataformasEndpoints();
 app.MapMissoesEndpoints();
+app.MapCelulasEndpoints();
 
 app.Run();

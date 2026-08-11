@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layout/AppShell";
 import { OrdensPreparacaoPage } from "./pages/OrdensPreparacaoPage";
 import { MissoesPage } from "./pages/MissoesPage";
+import { CapacidadePage } from "./pages/CapacidadePage";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/ordens-preparacao" replace />} />
           <Route path="/ordens-preparacao" element={<OrdensPreparacaoPage />} />
           <Route path="/missoes" element={<MissoesPage />} />
+          <Route path="/capacidade" element={<CapacidadePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -8,6 +8,7 @@ export interface OutboxEntry {
   barcode?: string;
   alveoloId?: string;
   quantidade?: number;
+  motivo?: string;
   criadoEm: number;
 }
 

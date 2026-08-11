@@ -32,4 +32,9 @@ public record OrdemPreparacaoResumo(
     decimal? VolumeLitros,
     decimal? PesoKg,
     string? TipoIndicativo,
-    IReadOnlyList<PlataformaResumo> Plataformas);
+    IReadOnlyList<PlataformaResumo> Plataformas,
+    bool Urgente,
+    DateTime? DataLimite);
+
+/// <summary>ADR-027: marcada pelo supervisor no controller, não vem da origem.</summary>
+public record UrgenteRequest(bool Urgente, DateTime? DataLimite);
