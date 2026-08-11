@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Instala o WOPA (orchestrator + pda + controller) num servidor Windows
     com IIS, a partir de uma cópia do repositório já copiada para o
