@@ -97,6 +97,13 @@ public static class PickingEndpoints
                 return Results.Conflict(new ErrorResponse(
                     $"São precisos {tipo.CestosPorPlataforma} cesto(s) para {tipo.Codigo} (foram lidos {cestosLidos.Length})."));
 
+            // Duas leituras iguais rebentavam a UNIQUE de PlataformaCestos/
+            // CestoInstancias mais abaixo (erro 500 em vez de mensagem
+            // clara) -- e não faz sentido dois cestos físicos com a mesma
+            // matrícula na mesma plataforma de qualquer forma.
+            if (cestosLidos.Distinct(StringComparer.Ordinal).Count() != cestosLidos.Length)
+                return Results.Conflict(new ErrorResponse("As matrículas dos cestos têm de ser todas diferentes."));
+
             if (plataforma.MontadaEm is null)
             {
                 // Primeira zona desta Ordem: montagem de raiz.

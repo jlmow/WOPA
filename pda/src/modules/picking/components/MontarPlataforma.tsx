@@ -39,8 +39,14 @@ export function MontarPlataforma({ montagem, onConfirmar }: Props) {
 
   function lerCesto(e: React.FormEvent) {
     e.preventDefault();
-    if (!cestoInput.trim() || faltamCestos <= 0) return;
-    setCestos((prev) => [...prev, cestoInput.trim()]);
+    const codigo = cestoInput.trim();
+    if (!codigo || faltamCestos <= 0) return;
+    if (cestos.includes(codigo)) {
+      setErro("Este cesto já foi lido — os cestos têm de ter matrículas diferentes.");
+      setCestoInput("");
+      return;
+    }
+    setCestos((prev) => [...prev, codigo]);
     setCestoInput("");
     setErro(null);
   }
