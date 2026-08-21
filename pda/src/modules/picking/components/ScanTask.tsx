@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { PickingTask } from "../types";
 import { allowKeyboardOnTap, suppressKeyboardOnBlur } from "../../../shared/scannerInput";
+import { ComposicaoPlataforma } from "./ComposicaoPlataforma";
 
 interface Props {
   task: PickingTask;
+  missaoId: string | null;
   onScan: (barcode: string) => Promise<{ ok: true } | { ok: false; erro: string }>;
   onVerLista: () => void;
 }
 
-export function ScanTask({ task, onScan, onVerLista }: Props) {
+export function ScanTask({ task, missaoId, onScan, onVerLista }: Props) {
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState<{ text: string; kind: "erro" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verComposicao, setVerComposicao] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // O leitor físico do PDA funciona como um teclado (keyboard wedge):
@@ -39,6 +42,10 @@ export function ScanTask({ task, onScan, onVerLista }: Props) {
     inputRef.current?.focus();
   }
 
+  if (verComposicao && missaoId) {
+    return <ComposicaoPlataforma missaoId={missaoId} onFechar={() => setVerComposicao(false)} />;
+  }
+
   return (
     <div className="scan-screen">
       <button className="link-button" onClick={onVerLista} data-testid="ver-lista-button">
@@ -52,6 +59,16 @@ export function ScanTask({ task, onScan, onVerLista }: Props) {
 
       <div className="platform-badge" data-testid="plataforma">
         Colocar em <strong>{task.plataforma}</strong>
+        {missaoId && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setVerComposicao(true)}
+            data-testid="ver-composicao-button"
+          >
+            Ver composição
+          </button>
+        )}
       </div>
 
       <div className="scan-screen__progress" data-testid="progress">

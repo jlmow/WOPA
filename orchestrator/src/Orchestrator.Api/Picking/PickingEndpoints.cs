@@ -29,6 +29,17 @@ public record MissionSummary(string Id, string Codigo, int TotalLinhas, int Linh
 
 public record MontagemRequest(string MatriculaPalete, string[] MatriculasCestos, string? OperacaoId = null);
 
+// Composição da plataforma já montada (ADR-036) -- o operador pode querer
+// confirmar o que está lá associado, sobretudo depois de trocar equipamento
+// avariado a meio da missão.
+public record CestoComposicaoDto(string Matricula, string TipoCestoCodigo);
+
+public record PlataformaComposicaoDto(string PlataformaId, string PlataformaCodigo, string? PaleteMatricula, IReadOnlyList<CestoComposicaoDto> Cestos);
+
+public record TrocarPaleteRequest(string NovaMatricula, string? OperacaoId = null);
+
+public record TrocarCestoRequest(string MatriculaAntiga, string NovaMatricula, string? OperacaoId = null);
+
 /// <summary>Um alvéolo com stock do artigo da tarefa, na zona onde o operador está (RF-PIC).</summary>
 public record AlveoloComStock(string AlveoloId, string Codigo, int QuantidadeDisponivel, int SugestaoQuantidade);
 
@@ -164,6 +175,98 @@ public static class PickingEndpoints
             return Results.Ok(new { confirmada = true });
         })
         .WithName("MontarOuConfirmarPlataformaPicking");
+
+        // ADR-036: o operador pode querer confirmar o que está montado
+        // nesta plataforma (sobretudo depois de trocar um cesto/palete
+        // avariado a meio da missão) -- composição só, sem alterar nada.
+        group.MapGet("/mission/{id}/plataforma", async (string id, WopaDbContext db) =>
+        {
+            var missao = await db.Missoes.SingleOrDefaultAsync(m => m.Id == id);
+            if (missao is null) return Results.NotFound();
+            if (missao.PlataformaId is not { } plataformaId)
+                return Results.Conflict(new ErrorResponse("Esta missão não tem plataforma associada."));
+
+            var composicao = await ObterComposicaoAsync(db, plataformaId);
+            return Results.Ok(composicao);
+        })
+        .WithName("ObterComposicaoPlataformaPicking");
+
+        // ADR-036: troca a palete de uma plataforma já montada -- para o
+        // caso de a palete física se danificar a meio da missão. A palete
+        // antiga fica retirada de circulação (Ativa=false); a nova tem de
+        // já estar pré-carregada e ativa (mesma validação da montagem).
+        group.MapPost("/mission/{id}/plataforma/trocar-palete", async (string id, TrocarPaleteRequest request, WopaDbContext db) =>
+        {
+            var missao = await db.Missoes.SingleOrDefaultAsync(m => m.Id == id);
+            if (missao is null) return Results.NotFound();
+            if (missao.PlataformaId is not { } plataformaId || !missao.PlataformaConfirmada)
+                return Results.Conflict(new ErrorResponse("Esta missão ainda não tem plataforma montada."));
+
+            var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
+            if (string.IsNullOrWhiteSpace(request.NovaMatricula))
+                return Results.BadRequest(new ErrorResponse("Matrícula da nova palete em falta."));
+
+            var novaPalete = await db.Paletes.SingleOrDefaultAsync(p => p.Matricula == request.NovaMatricula);
+            if (novaPalete is null)
+                return Results.Conflict(new ErrorResponse("Matrícula da palete desconhecida — regista-a primeiro no controller."));
+            if (!novaPalete.Ativa)
+                return Results.Conflict(new ErrorResponse("Esta palete está marcada como inativa."));
+            if (novaPalete.Id == plataforma.PaleteId)
+                return Results.Conflict(new ErrorResponse("Já é esta a palete desta plataforma."));
+
+            if (plataforma.PaleteId is { } paleteAntigaId)
+            {
+                var paleteAntiga = await db.Paletes.SingleAsync(p => p.Id == paleteAntigaId);
+                paleteAntiga.Ativa = false; // avariada -- retirada de circulação
+            }
+
+            plataforma.PaleteId = novaPalete.Id;
+            novaPalete.LocalizacaoAtualId = null; // em circulação
+
+            await db.SaveChangesAsync();
+            return Results.Ok(await ObterComposicaoAsync(db, plataformaId));
+        })
+        .WithName("TrocarPaletePlataformaPicking");
+
+        // ADR-036: troca um cesto de uma plataforma já montada -- mesmo
+        // motivo (avaria a meio da missão). O cesto antigo fica marcado
+        // "Avariado" (não volta ao pool de "Livre"); o novo tem de estar
+        // pré-carregado e livre.
+        group.MapPost("/mission/{id}/plataforma/trocar-cesto", async (string id, TrocarCestoRequest request, WopaDbContext db) =>
+        {
+            var missao = await db.Missoes.SingleOrDefaultAsync(m => m.Id == id);
+            if (missao is null) return Results.NotFound();
+            if (missao.PlataformaId is not { } plataformaId || !missao.PlataformaConfirmada)
+                return Results.Conflict(new ErrorResponse("Esta missão ainda não tem plataforma montada."));
+
+            if (string.IsNullOrWhiteSpace(request.MatriculaAntiga) || string.IsNullOrWhiteSpace(request.NovaMatricula))
+                return Results.BadRequest(new ErrorResponse("Matrícula antiga e nova são obrigatórias."));
+            if (string.Equals(request.MatriculaAntiga, request.NovaMatricula, StringComparison.Ordinal))
+                return Results.Conflict(new ErrorResponse("A matrícula nova tem de ser diferente da antiga."));
+
+            var vinculo = await db.PlataformaCestos.SingleOrDefaultAsync(
+                c => c.PlataformaId == plataformaId && c.MatriculaCesto == request.MatriculaAntiga);
+            if (vinculo is null)
+                return Results.Conflict(new ErrorResponse("Esse cesto não pertence a esta plataforma."));
+
+            var novoCesto = await db.CestoInstancias.SingleOrDefaultAsync(c => c.Matricula == request.NovaMatricula);
+            if (novoCesto is null)
+                return Results.Conflict(new ErrorResponse("Matrícula do cesto desconhecida — regista-a primeiro no controller."));
+            if (novoCesto.Estado != "Livre")
+                return Results.Conflict(new ErrorResponse("Este cesto já está em uso noutra plataforma."));
+
+            var cestoAntigo = await db.CestoInstancias.SingleAsync(c => c.Matricula == request.MatriculaAntiga);
+            cestoAntigo.Estado = "Avariado";
+            cestoAntigo.LocalizacaoAtualId = null;
+
+            vinculo.MatriculaCesto = novoCesto.Matricula;
+            novoCesto.Estado = "EmUso";
+            novoCesto.LocalizacaoAtualId = null;
+
+            await db.SaveChangesAsync();
+            return Results.Ok(await ObterComposicaoAsync(db, plataformaId));
+        })
+        .WithName("TrocarCestoPlataformaPicking");
 
         group.MapGet("/tasks/{id}", async (string id, WopaDbContext db) =>
         {
@@ -465,6 +568,29 @@ public static class PickingEndpoints
         var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
         var tipo = await db.TiposPlataforma.SingleAsync(t => t.Codigo == plataforma.TipoPlataformaCodigo);
         return new MontagemInfo(plataforma.Id, tipo.Codigo, tipo.CestosPorPlataforma, missao.PlataformaConfirmada, plataforma.MontadaEm is null);
+    }
+
+    // ADR-036: composição atual da plataforma (palete + cestos), com o
+    // tipo de cada cesto resolvido pela matrícula -- PlataformaCestos só
+    // guarda a matrícula (texto), não um FK a CestoInstancias.Id.
+    private static async Task<PlataformaComposicaoDto> ObterComposicaoAsync(WopaDbContext db, string plataformaId)
+    {
+        var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
+        var paleteMatricula = plataforma.PaleteId is { } paleteId
+            ? await db.Paletes.Where(p => p.Id == paleteId).Select(p => p.Matricula).SingleOrDefaultAsync()
+            : null;
+
+        var matriculasCestos = await db.PlataformaCestos
+            .Where(c => c.PlataformaId == plataformaId)
+            .Select(c => c.MatriculaCesto)
+            .ToListAsync();
+        var cestos = await db.CestoInstancias
+            .Include(c => c.TipoCesto)
+            .Where(c => matriculasCestos.Contains(c.Matricula))
+            .Select(c => new CestoComposicaoDto(c.Matricula, c.TipoCesto!.Codigo))
+            .ToListAsync();
+
+        return new PlataformaComposicaoDto(plataforma.Id, plataforma.Codigo, paleteMatricula, cestos);
     }
 
     // Opção A (ARCHITECTURE.md ADR-012): a API pública mantém o formato

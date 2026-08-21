@@ -1,5 +1,5 @@
 import { apiFetch } from "../../shared/api/http";
-import type { AlveoloComStock, MissionSummary, PickingTask } from "./types";
+import type { AlveoloComStock, MissionSummary, PickingTask, PlataformaComposicao } from "./types";
 
 export const pickingApi = {
   listTasks: (): Promise<PickingTask[]> => apiFetch<PickingTask[]>("/api/picking/tasks"),
@@ -58,5 +58,28 @@ export const pickingApi = {
     apiFetch<{ confirmada: boolean }>(`/api/picking/mission/${missaoId}/montagem`, {
       method: "POST",
       body: JSON.stringify({ matriculaPalete, matriculasCestos, operacaoId }),
+    }),
+
+  // ADR-036: composição atual da plataforma + troca de equipamento
+  // avariado a meio da missão — sempre em direto (ação rara, feita com
+  // o operador parado à espera, sem sentido pôr na fila de saída).
+  composicaoPlataforma: (missaoId: string): Promise<PlataformaComposicao> =>
+    apiFetch<PlataformaComposicao>(`/api/picking/mission/${missaoId}/plataforma`),
+
+  trocarPalete: (missaoId: string, novaMatricula: string, operacaoId: string): Promise<PlataformaComposicao> =>
+    apiFetch<PlataformaComposicao>(`/api/picking/mission/${missaoId}/plataforma/trocar-palete`, {
+      method: "POST",
+      body: JSON.stringify({ novaMatricula, operacaoId }),
+    }),
+
+  trocarCesto: (
+    missaoId: string,
+    matriculaAntiga: string,
+    novaMatricula: string,
+    operacaoId: string,
+  ): Promise<PlataformaComposicao> =>
+    apiFetch<PlataformaComposicao>(`/api/picking/mission/${missaoId}/plataforma/trocar-cesto`, {
+      method: "POST",
+      body: JSON.stringify({ matriculaAntiga, novaMatricula, operacaoId }),
     }),
 };

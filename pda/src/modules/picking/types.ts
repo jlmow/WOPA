@@ -37,3 +37,17 @@ export interface AlveoloComStock {
   quantidadeDisponivel: number;
   sugestaoQuantidade: number;
 }
+
+// Composição da plataforma já montada (ADR-036) — para o operador
+// confirmar o que lá está e trocar equipamento avariado a meio da missão.
+export interface CestoComposicao {
+  matricula: string;
+  tipoCestoCodigo: string;
+}
+
+export interface PlataformaComposicao {
+  plataformaId: string;
+  plataformaCodigo: string;
+  paleteMatricula: string | null;
+  cestos: CestoComposicao[];
+}

@@ -300,6 +300,7 @@ export function PickingModule() {
       {vista === "leitura" && selectedTask && (
         <ScanTask
           task={selectedTask}
+          missaoId={missao?.id || null}
           onScan={(barcode) => handleScan(selectedTask, barcode)}
           onVerLista={() => setVista("lista")}
         />

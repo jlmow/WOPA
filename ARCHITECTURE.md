@@ -1985,6 +1985,52 @@ começar pela Fase 1 e crescer para a Fase 2.
   corredores diferentes na mesma plataforma) não tem schema, endpoint
   nem ecrã ainda — fica para quando o cliente tiver isto mais claro.
 
+### ADR-036 — Ver composição da plataforma; trocar palete/cesto avariado a meio da missão
+
+- **Contexto:** depois de testar o gate de montagem (ADR-035) no
+  Android, o cliente perguntou se o código mostrado no ecrã de leitura
+  (`Colocar em PLT-0001`) é gerado pela leitura da palete no ecrã
+  anterior — não é: `PLT-0001` é o `Plataforma.Codigo`, atribuído na
+  tipificação/despacho da Ordem (`OrdensPreparacaoEndpoints.cs`),
+  antes de a missão sequer começar. A palete física (matrícula lida na
+  montagem) é um dado diferente, guardado em `Plataforma.PaleteId` →
+  `Paletes.Matricula`, e não aparecia em lado nenhum do ecrã — daí o
+  pedido de um botão para ver a composição real. Na mesma mensagem, o
+  cliente pediu também para poder trocar a palete ou um cesto se se
+  danificarem a meio da missão, sem ter de recomeçar a montagem.
+- **Backend (`PickingEndpoints.cs`), três rotas novas sob
+  `/api/picking/mission/{id}/plataforma`:**
+  - `GET` — composição atual (código da palete + matrícula/tipo de
+    cada cesto), resolvida a partir de `Plataforma.PaleteId` e
+    `PlataformaCestos` (que só guarda a matrícula do cesto como texto,
+    não um FK — o tipo resolve-se por *join* com `CestoInstancias`).
+  - `POST /trocar-palete` — só depois de a plataforma já estar
+    montada/confirmada; valida a nova matrícula contra `Paletes`
+    (igual à montagem: tem de estar pré-carregada e `Ativa`); marca a
+    palete antiga `Ativa = false` (retirada de circulação —
+    avariada), sem apagar a linha (ADR-017).
+  - `POST /trocar-cesto` — mesma validação de pré-carregado; exige que
+    o cesto novo esteja `Estado == "Livre"` (não pode estar em uso
+    noutra plataforma); marca o cesto antigo `Estado = "Avariado"`
+    (terceiro valor da coluna, que nunca teve `CHECK` — só
+    `Livre`/`EmUso` documentados em comentário — por isso não precisa
+    de migração).
+- **`pda` — novo componente `ComposicaoPlataforma.tsx`:** acessível a
+  partir de um botão "Ver composição" no badge da plataforma
+  (`ScanTask.tsx`, o mesmo ecrã do pedido do cliente); mostra a palete
+  e os cestos com um botão "Trocar (avariada/avariado)" em cada linha,
+  que abre um campo de leitura da nova matrícula (mesmo padrão de
+  leitura das outras telas — ADR-033). Sempre em direto (não passa
+  pela fila de saída do ADR-007): é uma ação rara, feita com o
+  operador parado à espera da confirmação, ao contrário do scan/pick
+  do dia a dia.
+- **Deliberadamente fora de alcance:** motivo estruturado da avaria
+  (hoje é só "trocar", sem campo de texto a registar porquê); histórico
+  de trocas por missão (fica só no `CriadoEm` de cada linha nova de
+  `PlataformaCestos`, sem tabela de auditoria dedicada); repor uma
+  palete/cesto "avariado" como ativo outra vez (só o controller,
+  editando a matrícula diretamente, se vier a ser preciso).
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para
