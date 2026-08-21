@@ -476,7 +476,17 @@ function Build-Frontend([string]$Name, [int]$Port) {
     $outDir = Join-Path $InstallRoot $Name
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     & robocopy $distDir $outDir /MIR /NFL /NDL /NJH /NJS | Out-Null
-    Write-Ok "$Name compilado e copiado para $outDir"
+    # Códigos de saída do robocopy não seguem a convenção 0=sucesso: 0-7
+    # são todos sucesso (0 sem alterações, 1 ficheiros copiados, 2 extra,
+    # 4 incompatíveis -- combináveis por soma de bits), só >=8 é erro a
+    # sério. Sem esta verificação, uma cópia falhada (ficheiro bloqueado
+    # pelo IIS, permissões, disco cheio) ficava silenciosa -- o ecrã
+    # dizia "compilado e copiado" na mesma e o site continuava a servir
+    # a versão antiga sem nenhum aviso.
+    if ($LASTEXITCODE -ge 8) {
+        throw "robocopy falhou a copiar $distDir -> $outDir (código $LASTEXITCODE) -- o site '$Name' ficou com a versão anterior. Confirma que nada tem ficheiros abertos em $outDir (ex. o site no IIS Manager) e corre outra vez."
+    }
+    Write-Ok "$Name compilado e copiado para $outDir (robocopy código $LASTEXITCODE)"
 }
 
 if (Test-Command "npm") {
