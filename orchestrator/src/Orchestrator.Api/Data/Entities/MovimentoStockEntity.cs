@@ -17,4 +17,7 @@ public class MovimentoStockEntity
 
     /// <summary>Motivo da exceção (ADR-027) — só preenchido quando a quantidade picada difere da sugerida (ex.: "Falta de stock").</summary>
     public string? Motivo { get; set; }
+
+    /// <summary>Palete/plataforma de destino do pick (ADR-034) — preenchida sozinha a partir da Missão, sem passo novo no pda.</summary>
+    public string? PlataformaId { get; set; }
 }

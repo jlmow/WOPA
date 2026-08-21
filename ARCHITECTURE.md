@@ -1857,6 +1857,26 @@ começar pela Fase 1 e crescer para a Fase 2.
      localmente adicionar uma matrícula repetida à lista, com
      mensagem no ecrã, antes de sequer chamar o servidor.
 
+### ADR-034 — `sl` (movimentos de stock) ganha `PlataformaId`: erro real de estrutura apontado pelo cliente
+
+- **Contexto:** "se vou picar paletes, onde estão os ID (char) das
+  paletes nos movimentos de stock?" — `sl` só registava de que
+  alvéolo (origem) saía o stock, nunca para que palete/plataforma
+  (destino) ia. Erro real de estrutura, não só falta de UI.
+- **Corrigido:** `sl` ganha `PlataformaId` (FK a `plataformas`,
+  `ALTER TABLE` guardado como o resto das migrações aditivas) —
+  preenchido sozinho a partir de `Missao.PlataformaId` em cada
+  `POST /tasks/{id}/pick`, sem passo novo nenhum no `pda` (a Missão já
+  sabe a plataforma desde o despacho).
+- **Deliberadamente fora de alcance:** ligar o movimento ao **cesto**
+  específico dentro da plataforma (P2/P4 têm mais do que um) — isso
+  fecharia a regra "um cesto = uma encomenda" (não misturar
+  encomendas no mesmo cesto), mas exige um passo novo no ecrã de
+  picking (escolher/ler o cesto a cada pick) e mudaria o fluxo já
+  testado. Fica para quando fizer sentido pedir isso explicitamente —
+  `MissaoLinhas.CestoId`/`CestosNecessarios` já existem no schema à
+  espera disso (ver ADR-029).
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para

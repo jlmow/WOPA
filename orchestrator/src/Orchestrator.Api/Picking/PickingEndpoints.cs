@@ -281,6 +281,7 @@ public static class PickingEndpoints
                 Quantidade = request.Quantidade,
                 MissaoLinhaId = task.Id,
                 Motivo = request.Motivo,
+                PlataformaId = missao.PlataformaId,
                 CriadoEm = DateTime.UtcNow,
             });
 

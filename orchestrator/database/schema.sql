@@ -861,5 +861,22 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.orden
     ALTER TABLE dbo.ordenspreparacao ADD Observacoes NVARCHAR(500) NULL;
 GO
 
+-------------------------------------------------------------------------
+-- 29. Migrações aditivas (ADR-034) — sl (movimentos de stock) ganha
+--     PlataformaId: até aqui só se registava de que alvéolo (origem)
+--     saiu o stock, nunca para que palete/plataforma (destino) foi --
+--     erro real de estrutura, apontado pelo cliente ("onde estão os
+--     ID das paletes nos movimentos de stock?"). Preenchido sozinho a
+--     partir da Missão em cada /pick, sem passo novo no pda.
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.sl') AND name = N'PlataformaId')
+    ALTER TABLE dbo.sl ADD PlataformaId NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_SL_Plataforma')
+    ALTER TABLE dbo.sl ADD CONSTRAINT FK_SL_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.plataformas (Id);
+GO
+
 PRINT 'Base de dados WOPA pronta.';
 GO

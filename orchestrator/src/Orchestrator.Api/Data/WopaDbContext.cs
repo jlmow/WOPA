@@ -173,6 +173,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
         {
             e.ToTable("sl");
             e.HasKey(x => x.Id);
+            e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
         });
 
         modelBuilder.Entity<CelulaEntity>(e =>
