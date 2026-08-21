@@ -1877,6 +1877,114 @@ começar pela Fase 1 e crescer para a Fase 2.
   `MissaoLinhas.CestoId`/`CestosNecessarios` já existem no schema à
   espera disso (ver ADR-029).
 
+### ADR-035 — `Paletes` unificada (origem e missão são o mesmo equipamento); `SA`/`SL` ganham `PaleteId`; `Paletes`/`CestoInstancias` deixam de se inventar ao ler
+
+- **Contexto — correção de modelo de domínio apontada pelo cliente,
+  em três mensagens seguidas, exigindo confirmação antes de qualquer
+  código:**
+  1. *"Existe a palete onde está o stock armazenado nas racks do
+     armazém e depois existe a palete onde eu vou tirar stock dessas
+     paletes armazenadas e montar a tal palete da missão."* — há duas
+     paletes em jogo em qualquer pick: a de **origem** (na rack, com
+     stock) e a de **destino** (a da missão, a "Plataforma"). O
+     modelo anterior (`SA` só com `AlveoloId`) tratava o alvéolo como
+     se ele próprio guardasse o stock, sem noção de que dentro de um
+     alvéolo pode haver mais do que uma palete física.
+  2. *"as paletes podem ficar todas na mesma tabela [...] O ID da
+     palete não vai diferir por ser uma palete de stock ou uma palete
+     para a missão. Há um depósito de paletes vazias com matrícula.
+     Tanto podem ser usadas para stock ou para missões."* — rejeitada
+     explicitamente a ideia (proposta inicialmente por mim) de duas
+     tabelas/conceitos separados: é **um único equipamento
+     reaproveitado**, `Paletes` (matrícula própria), que ora está
+     parado numa rack a segurar stock, ora está a circular como
+     destino de uma missão. Ter ou não stock não é um estado gravado
+     na palete — deduz-se dos movimentos (`SA`/`SL`), tal como o resto
+     do stock já funciona (ADR-022).
+  3. *"a SL deve ter sku, alveolo e paleteid. a SA deve ter sku,
+     alveolo e paleteid. Uma palete pode ter mais do que 1 sku. 1
+     alveolo pode ter mais do que 1 palete."* — `SA` e `SL` mantêm
+     `AlveoloId` **e** ganham `PaleteId` como colunas diretas lado a
+     lado (não uma relação indireta via `Paletes.LocalizacaoAtualId`,
+     que eu tinha proposto e foi rejeitada) — o operador continua a
+     escolher o alvéolo (agregado/informativo), mas cada pick real
+     tem de identificar a palete física exata.
+- **Schema:**
+  - `Paletes` (nova) — `Id`, `Matricula` (única), `Ativa`,
+    `LocalizacaoAtualId` (FK `ALV`, `NULL` enquanto "em circulação"
+    numa missão), `CriadoEm`. Pré-carregada, nunca criada ao ler (ver
+    abaixo) — mesma tabela serve paletes de origem (com
+    `LocalizacaoAtualId` = o alvéolo onde estão) e paletes de missão
+    (sem localização, vindas do depósito).
+  - `SA` passa a chave composta `(Sku, AlveoloId, PaleteId)` — uma
+    linha por "esta palete, neste alvéolo, tem esta quantidade deste
+    SKU". `PaleteId NOT NULL`, `FK_SA_Palete`.
+  - `SL` ganha `PaleteId` (origem) — a par do `PlataformaId` (destino,
+    ADR-034) já existente. Um único movimento de pick passa a
+    registar as duas paletes: de onde saiu, para onde foi.
+  - `Plataformas.MatriculaPalete` (texto solto, sem validação nenhuma,
+    gravado só na montagem) marcado `[Obsolete]` — substituído por
+    `Plataformas.PaleteId` (FK real a `Paletes.Id`). Coluna antiga não
+    apagada (ADR-017).
+- **`PickingEndpoints.cs`:**
+  - **Montagem:** a matrícula de palete lida resolve-se contra
+    `Paletes` (`Conflict` se desconhecida, já não cria a linha na
+    hora — ver ponto de `CestoInstancias` abaixo); na primeira
+    montagem grava `Plataforma.PaleteId = palete.Id` e limpa
+    `palete.LocalizacaoAtualId` (passa a "em circulação"); nas zonas
+    seguintes compara por `Id`, não por texto.
+  - `GET /tasks/{id}/alveolos`: passa a agregar (`GROUP BY` + `SUM`)
+    o stock de todas as paletes num alvéolo — o ecrã de escolha de
+    alvéolo continua informativo/agregado, a palete exata só se
+    resolve no pick seguinte.
+  - `POST /tasks/{id}/pick`: `PickRequest` ganha `MatriculaPalete`
+    (obrigatório) — resolve-se contra `Paletes`, localiza a linha de
+    `SA` exata `(Sku, AlveoloId, PaleteId)`, e o `MovimentoStock`
+    criado grava `PaleteId` (origem) a par do `PlataformaId` (destino,
+    já existente).
+- **`CestoInstancias` (ADR-030) tinha o mesmo defeito de fundo,
+  corrigido aqui também:** criava uma instância nova na primeira vez
+  que uma matrícula era lida — contradiz "as matrículas são
+  pré-carregadas, não inventadas ao ler" (mesma exigência do cliente
+  para `Paletes`). `GarantirCestoInstanciasAsync` foi apagado por
+  inteiro; a montagem passa a validar contra linhas já existentes,
+  `Conflict` a listar as matrículas desconhecidas em vez de as criar.
+- **Pré-carregamento — decidido por pergunta direta ao cliente:**
+  (1) por um **ecrã novo no `controller`** (`EquipamentoPage.tsx`,
+  rota `/equipamento`), não por script SQL — regista `Paletes` e
+  `CestoInstancias` uma matrícula de cada vez (`POST /api/paletes`,
+  `POST /api/cestos-instancias`, ambos com verificação de duplicado);
+  (2) quando um alvéolo tem mais do que uma palete do mesmo SKU, é o
+  **operador que lê a matrícula da palete de origem** a cada pick
+  (não uma escolha automática do sistema) — daí o novo passo no
+  `pda`.
+- **`pda` (`PickAlveolo.tsx`):** depois de escolher o alvéolo, novo
+  passo obrigatório — ler a matrícula da palete de origem (mesmo
+  padrão de leitura das outras telas: teclado só ao toque, apagar ao
+  tocar, ver ADR-033) — só depois disso é que o campo de quantidade
+  aparece. `onConfirmar`, `pickingApi.pick()` e a fila de saída
+  (`db.ts`/`sync.ts`, ADR-007) passam a carregar `matriculaPalete` até
+  ao servidor.
+- **`dados-teste.sql` reescrito** para o schema novo: cada linha de
+  `SA` ganha uma `Paletes` de origem própria (com
+  `LocalizacaoAtualId` = o alvéolo onde está); um alvéolo (Ordem A,
+  `alv-teste-02`) fica de propósito com 2 paletes de SKUs diferentes,
+  outro (`alv-teste-03`) com 2 paletes do MESMO SKU (quantidade
+  dividida) — os dois casos que a validação nova tem de aguentar. Mais
+  8 `Paletes` de depósito (uma por Plataforma) e 15 `CestoInstancias`
+  (conforme P1/P2/P4 de cada Plataforma) para o gate de montagem.
+- **Deliberadamente fora de alcance, por admissão do próprio
+  cliente ("ainda não tenho isto bem definido na minha cabeça"):**
+  o fluxo depois da montagem — o picker monta a plataforma
+  primeiro (palete + N cestos, conforme P1/P2/P4), depois segue a
+  lista de picking por corredor indicada pelo controller/orquestrador;
+  ao terminar o(s) seu(s) corredor(es), a plataforma vai para uma
+  "localização de passagem" para o picker seguinte, se a mesma
+  missão/plataforma ainda tiver artigos a picar noutro corredor. Este
+  conceito de "localização de passagem" (handoff entre pickers de
+  corredores diferentes na mesma plataforma) não tem schema, endpoint
+  nem ecrã ainda — fica para quando o cliente tiver isto mais claro.
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para

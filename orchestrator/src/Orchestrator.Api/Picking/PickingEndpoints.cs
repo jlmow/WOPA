@@ -12,7 +12,11 @@ public record ConfirmRequest(string? OperacaoId = null);
 // sugerida (ex.: "Falta de stock", "Caixa incompleta", "Dano") -- o
 // servidor não valida isto (não sabe qual era a sugestão original sem a
 // recalcular), a obrigatoriedade fica no ecrã do pda.
-public record PickRequest(string AlveoloId, int Quantidade, string? Motivo = null, string? OperacaoId = null);
+// MatriculaPalete (ADR-035): a palete de ORIGEM de onde o operador
+// está mesmo a tirar o stock -- necessário porque um alvéolo pode ter
+// mais do que uma palete do mesmo SKU (SA passa a ter chave (Sku,
+// AlveoloId, PaleteId)); sem isto não há como saber de qual delas saiu.
+public record PickRequest(string AlveoloId, string MatriculaPalete, int Quantidade, string? Motivo = null, string? OperacaoId = null);
 
 public record ErrorResponse(string Erro);
 
@@ -104,25 +108,45 @@ public static class PickingEndpoints
             if (cestosLidos.Distinct(StringComparer.Ordinal).Count() != cestosLidos.Length)
                 return Results.Conflict(new ErrorResponse("As matrículas dos cestos têm de ser todas diferentes."));
 
+            // ADR-035: as matrículas são pré-carregadas (ecrã do controller),
+            // não inventadas ao ler -- valida contra o que já existe em vez
+            // de criar instâncias novas na primeira leitura.
+            var palete = await db.Paletes.SingleOrDefaultAsync(p => p.Matricula == request.MatriculaPalete);
+            if (palete is null)
+                return Results.Conflict(new ErrorResponse("Matrícula da palete desconhecida — regista-a primeiro no controller."));
+
+            var cestosEncontrados = await db.CestoInstancias
+                .Where(c => cestosLidos.Contains(c.Matricula))
+                .ToListAsync();
+            if (cestosEncontrados.Count != cestosLidos.Length)
+            {
+                var desconhecidos = cestosLidos.Except(cestosEncontrados.Select(c => c.Matricula), StringComparer.Ordinal);
+                return Results.Conflict(new ErrorResponse(
+                    $"Matrícula(s) de cesto desconhecida(s): {string.Join(", ", desconhecidos)} — regista-as primeiro no controller."));
+            }
+
             if (plataforma.MontadaEm is null)
             {
                 // Primeira zona desta Ordem: montagem de raiz.
-                plataforma.MatriculaPalete = request.MatriculaPalete;
+                plataforma.PaleteId = palete.Id;
                 plataforma.MontadaEm = DateTime.UtcNow;
-                foreach (var matricula in cestosLidos)
+                palete.LocalizacaoAtualId = null; // em circulação
+                foreach (var cesto in cestosEncontrados)
                 {
                     db.PlataformaCestos.Add(new PlataformaCestoEntity
                     {
                         Id = Guid.NewGuid().ToString("n"),
                         PlataformaId = plataforma.Id,
-                        MatriculaCesto = matricula,
+                        MatriculaCesto = cesto.Matricula,
                     });
+                    cesto.Estado = "EmUso";
+                    cesto.LocalizacaoAtualId = null;
                 }
             }
             else
             {
                 // Zona seguinte: só confirma que é a mesma plataforma (mesma palete + mesmos cestos).
-                if (!string.Equals(plataforma.MatriculaPalete, request.MatriculaPalete, StringComparison.Ordinal))
+                if (plataforma.PaleteId != palete.Id)
                     return Results.Conflict(new ErrorResponse("Matrícula da palete não corresponde à plataforma desta missão."));
 
                 var matriculasConhecidas = await db.PlataformaCestos
@@ -132,8 +156,6 @@ public static class PickingEndpoints
                 if (!cestosLidos.OrderBy(c => c, StringComparer.Ordinal).SequenceEqual(matriculasConhecidas.OrderBy(c => c, StringComparer.Ordinal)))
                     return Results.Conflict(new ErrorResponse("Os cestos lidos não correspondem aos desta plataforma."));
             }
-
-            await GarantirCestoInstanciasAsync(db, cestosLidos);
 
             missao.PlataformaConfirmada = true;
             missao.PlataformaConfirmadaEm = DateTime.UtcNow;
@@ -223,12 +245,17 @@ public static class PickingEndpoints
             if (missao.ZonaId is null)
                 return Results.Ok(Array.Empty<AlveoloComStock>());
 
+            // ADR-035: um alvéolo pode ter mais do que uma palete do mesmo
+            // SKU -- soma-se aqui para a escolha de alvéolo continuar
+            // simples (um por artigo); a palete específica só é pedida a
+            // seguir, no scan de /pick.
             var falta = task.QuantidadeAlvo - task.QuantidadeLida;
             var opcoes = await db.Estoque
                 .Include(e => e.Alveolo)
                 .Where(e => e.Sku == task.Sku && e.Quantidade > 0 && e.Alveolo!.ZonaId == missao.ZonaId)
-                .OrderByDescending(e => e.Quantidade)
-                .Select(e => new AlveoloComStock(e.AlveoloId, e.Alveolo!.Codigo, e.Quantidade, Math.Min(falta, e.Quantidade)))
+                .GroupBy(e => new { e.AlveoloId, Codigo = e.Alveolo!.Codigo })
+                .Select(g => new AlveoloComStock(g.Key.AlveoloId, g.Key.Codigo, g.Sum(e => e.Quantidade), Math.Min(falta, g.Sum(e => e.Quantidade))))
+                .OrderByDescending(o => o.QuantidadeDisponivel)
                 .ToListAsync();
 
             return Results.Ok(opcoes);
@@ -266,9 +293,19 @@ public static class PickingEndpoints
                 return Results.Conflict(new ErrorResponse(
                     $"Essa quantidade excede a necessidade da missão (faltam {task.QuantidadeAlvo - task.QuantidadeLida})."));
 
-            var estoque = await db.Estoque.SingleOrDefaultAsync(e => e.Sku == task.Sku && e.AlveoloId == request.AlveoloId);
+            if (string.IsNullOrWhiteSpace(request.MatriculaPalete))
+                return Results.BadRequest(new ErrorResponse("Matrícula da palete de origem em falta."));
+
+            // ADR-035: a matrícula é pré-carregada, tal como no gate de
+            // montagem -- recusa matrícula desconhecida em vez de assumir.
+            var paleteOrigem = await db.Paletes.SingleOrDefaultAsync(p => p.Matricula == request.MatriculaPalete);
+            if (paleteOrigem is null)
+                return Results.Conflict(new ErrorResponse("Matrícula da palete desconhecida — regista-a primeiro no controller."));
+
+            var estoque = await db.Estoque.SingleOrDefaultAsync(e =>
+                e.Sku == task.Sku && e.AlveoloId == request.AlveoloId && e.PaleteId == paleteOrigem.Id);
             if (estoque is null || estoque.Quantidade < request.Quantidade)
-                return Results.Conflict(new ErrorResponse("Stock insuficiente nesse alvéolo."));
+                return Results.Conflict(new ErrorResponse("Stock insuficiente nessa palete."));
 
             estoque.Quantidade -= request.Quantidade;
             estoque.AtualizadoEm = DateTime.UtcNow;
@@ -278,6 +315,7 @@ public static class PickingEndpoints
                 CodigoMovimentoId = 501,
                 Sku = task.Sku,
                 AlveoloId = request.AlveoloId,
+                PaleteId = paleteOrigem.Id,
                 Quantidade = request.Quantidade,
                 MissaoLinhaId = task.Id,
                 Motivo = request.Motivo,
@@ -377,7 +415,7 @@ public static class PickingEndpoints
             var plataformas = await db.Plataformas.ToListAsync();
             foreach (var plataforma in plataformas)
             {
-                plataforma.MatriculaPalete = null;
+                plataforma.PaleteId = null;
                 plataforma.MontadaEm = null;
             }
 
@@ -427,42 +465,6 @@ public static class PickingEndpoints
         var plataforma = await db.Plataformas.SingleAsync(p => p.Id == plataformaId);
         var tipo = await db.TiposPlataforma.SingleAsync(t => t.Codigo == plataforma.TipoPlataformaCodigo);
         return new MontagemInfo(plataforma.Id, tipo.Codigo, tipo.CestosPorPlataforma, missao.PlataformaConfirmada, plataforma.MontadaEm is null);
-    }
-
-    // ADR-030: o gate de montagem passa a ser também onde o cesto físico
-    // (matrícula) nasce como CestoInstancia -- ainda não há um fluxo de
-    // pré-registo de equipamento à parte. Uma matrícula já conhecida só
-    // muda de estado (volta a EmUso, larga a localização parada); uma
-    // matrícula nova cria a instância. Só há um tipo de cesto seedado por
-    // agora ("cesto-standard") -- por revisitar quando houver mais do
-    // que um.
-    private static async Task GarantirCestoInstanciasAsync(WopaDbContext db, IReadOnlyCollection<string> matriculas)
-    {
-        if (matriculas.Count == 0) return;
-
-        var existentes = await db.CestoInstancias
-            .Where(c => matriculas.Contains(c.Matricula))
-            .ToDictionaryAsync(c => c.Matricula);
-
-        string? tipoCestoDefaultId = null;
-        foreach (var matricula in matriculas)
-        {
-            if (existentes.TryGetValue(matricula, out var instancia))
-            {
-                instancia.Estado = "EmUso";
-                instancia.LocalizacaoAtualId = null;
-                continue;
-            }
-
-            tipoCestoDefaultId ??= await db.Cestos.Select(c => c.Id).FirstAsync();
-            db.CestoInstancias.Add(new CestoInstanciaEntity
-            {
-                Id = Guid.NewGuid().ToString("n"),
-                Matricula = matricula,
-                TipoCestoId = tipoCestoDefaultId,
-                Estado = "EmUso",
-            });
-        }
     }
 
     // Opção A (ARCHITECTURE.md ADR-012): a API pública mantém o formato

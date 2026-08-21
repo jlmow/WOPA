@@ -5,7 +5,7 @@ import { allowKeyboardOnTap, suppressKeyboardOnBlur } from "../../../shared/scan
 
 interface Props {
   task: PickingTask;
-  onConfirmar: (alveoloId: string, quantidade: number, motivo?: string) => void;
+  onConfirmar: (alveoloId: string, matriculaPalete: string, quantidade: number, motivo?: string) => void;
   onCancelar: () => void;
   onCompleted: (taskId: string) => void;
 }
@@ -28,9 +28,12 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
   const [opcoes, setOpcoes] = useState<AlveoloComStock[] | null>(null);
   const [erroCarregar, setErroCarregar] = useState<string | null>(null);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const [matriculaPalete, setMatriculaPalete] = useState<string | null>(null);
+  const [paleteInput, setPaleteInput] = useState("");
   const [quantidade, setQuantidade] = useState<number>(0);
   const [motivo, setMotivo] = useState<string>("");
   const [erro, setErro] = useState<string | null>(null);
+  const paleteRef = useRef<HTMLInputElement>(null);
   const quantidadeRef = useRef<HTMLInputElement>(null);
 
   // Quando este pick completa a linha, o próprio orchestrator/estado local
@@ -68,12 +71,28 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
     };
   }, [task.id]);
 
-  // Escolher o alvéolo avança logo o foco para a quantidade (auto-avanço) —
-  // sem abrir o teclado sozinho (só no toque real, ver scannerInput).
+  // Escolher o alvéolo avança logo o foco para a leitura da palete de
+  // origem (ADR-035: o alvéolo pode ter mais do que uma palete com o
+  // mesmo SKU, por isso o operador tem de ler a matrícula certa a cada
+  // pick) — sem abrir o teclado sozinho (só no toque real, ver
+  // scannerInput).
   function selecionar(opcao: AlveoloComStock) {
     setSelecionadoId(opcao.alveoloId);
     setQuantidade(opcao.sugestaoQuantidade);
+    setMatriculaPalete(null);
+    setPaleteInput("");
     setMotivo("");
+    setErro(null);
+    requestAnimationFrame(() => {
+      paleteRef.current?.focus();
+    });
+  }
+
+  function lerPalete(e: React.FormEvent) {
+    e.preventDefault();
+    if (!paleteInput.trim()) return;
+    setMatriculaPalete(paleteInput.trim());
+    setPaleteInput("");
     setErro(null);
     requestAnimationFrame(() => {
       quantidadeRef.current?.focus();
@@ -85,7 +104,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
   const ehExcecao = selecionado !== null && quantidade !== selecionado.sugestaoQuantidade;
 
   function confirmarComQuantidade(qtd: number, motivoEscolhido?: string) {
-    if (!selecionado) return;
+    if (!selecionado || !matriculaPalete) return;
     if (qtd <= 0 || qtd > maximo) {
       setErro(`Introduz uma quantidade entre 1 e ${maximo}.`);
       return;
@@ -94,7 +113,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
       setErro("Escolhe um motivo para a quantidade ser diferente da sugerida.");
       return;
     }
-    onConfirmar(selecionado.alveoloId, qtd, motivoEscolhido);
+    onConfirmar(selecionado.alveoloId, matriculaPalete, qtd, motivoEscolhido);
   }
 
   // Toque único para o caso comum (caixa fechada, nada de estranho):
@@ -151,7 +170,7 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
       )}
 
       {task.estado !== "Concluida" && opcoes !== null && opcoes.length > 0 && (
-        <form onSubmit={handleConfirmar}>
+        <>
           <p className="scan-screen__meta">Em que alvéolo estás?</p>
           <ul className="option-list" data-testid="alveolo-list">
             {opcoes.map((opcao) => (
@@ -169,69 +188,114 @@ export function PickAlveolo({ task, onConfirmar, onCancelar, onCompleted }: Prop
             ))}
           </ul>
 
-          {selecionado && !ehExcecao && (
-            <button
-              type="button"
-              className="confirm-button"
-              onClick={confirmarSugerido}
-              data-testid="confirmar-sugerido"
-            >
-              Confirmar {selecionado.sugestaoQuantidade}
-            </button>
+          {selecionado && matriculaPalete === null && (
+            <form onSubmit={lerPalete}>
+              <p className="scan-screen__meta">
+                Uma palete pode ter mais do que um SKU e um alvéolo pode ter mais do que uma palete — lê a
+                matrícula certa antes de picar.
+              </p>
+              <label htmlFor="pick-palete">Ler matrícula da palete de origem</label>
+              <input
+                id="pick-palete"
+                ref={paleteRef}
+                data-testid="palete-origem-input"
+                inputMode="none"
+                value={paleteInput}
+                onChange={(e) => setPaleteInput(e.target.value)}
+                onPointerDown={allowKeyboardOnTap}
+                onBlur={suppressKeyboardOnBlur}
+                onClick={() => setPaleteInput("")}
+                placeholder="Ler código da palete"
+                autoComplete="off"
+              />
+              <button type="submit" disabled={!paleteInput.trim()} data-testid="confirmar-palete-origem">
+                Confirmar palete
+              </button>
+            </form>
           )}
 
-          <label htmlFor="pick-quantidade">
-            {ehExcecao ? "Quantidade diferente da sugerida" : "Ou introduz outra quantidade"}
-          </label>
-          <input
-            id="pick-quantidade"
-            ref={quantidadeRef}
-            data-testid="quantidade-input"
-            type="number"
-            inputMode="none"
-            min={1}
-            max={maximo}
-            value={quantidade === 0 ? "" : quantidade}
-            onChange={(e) => setQuantidade(Number(e.target.value))}
-            onPointerDown={allowKeyboardOnTap}
-            onBlur={suppressKeyboardOnBlur}
-            onClick={() => setQuantidade(0)}
-            autoComplete="off"
-          />
+          {selecionado && matriculaPalete !== null && (
+            <form onSubmit={handleConfirmar}>
+              <div className="platform-badge" data-testid="palete-origem-lida">
+                Palete de origem <strong>{matriculaPalete}</strong>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setMatriculaPalete(null);
+                    requestAnimationFrame(() => paleteRef.current?.focus());
+                  }}
+                  data-testid="reler-palete-origem"
+                >
+                  Ler outra
+                </button>
+              </div>
 
-          {ehExcecao && (
-            <>
-              <label htmlFor="pick-motivo">Motivo</label>
-              <select
-                id="pick-motivo"
-                data-testid="motivo-select"
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
+              {!ehExcecao && (
+                <button
+                  type="button"
+                  className="confirm-button"
+                  onClick={confirmarSugerido}
+                  data-testid="confirmar-sugerido"
+                >
+                  Confirmar {selecionado.sugestaoQuantidade}
+                </button>
+              )}
+
+              <label htmlFor="pick-quantidade">
+                {ehExcecao ? "Quantidade diferente da sugerida" : "Ou introduz outra quantidade"}
+              </label>
+              <input
+                id="pick-quantidade"
+                ref={quantidadeRef}
+                data-testid="quantidade-input"
+                type="number"
+                inputMode="none"
+                min={1}
+                max={maximo}
+                value={quantidade === 0 ? "" : quantidade}
+                onChange={(e) => setQuantidade(Number(e.target.value))}
+                onPointerDown={allowKeyboardOnTap}
+                onBlur={suppressKeyboardOnBlur}
+                onClick={() => setQuantidade(0)}
+                autoComplete="off"
+              />
+
+              {ehExcecao && (
+                <>
+                  <label htmlFor="pick-motivo">Motivo</label>
+                  <select
+                    id="pick-motivo"
+                    data-testid="motivo-select"
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                  >
+                    <option value="">Escolher motivo…</option>
+                    {MOTIVOS_EXCECAO.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+
+              <button
+                type="submit"
+                disabled={quantidade <= 0 || (ehExcecao && !motivo)}
+                data-testid="confirmar-pick"
               >
-                <option value="">Escolher motivo…</option>
-                {MOTIVOS_EXCECAO.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </>
+                Confirmar
+              </button>
+            </form>
           )}
-
-          <button
-            type="submit"
-            disabled={!selecionado || quantidade <= 0 || (ehExcecao && !motivo)}
-            data-testid="confirmar-pick"
-          >
-            Confirmar
-          </button>
 
           {erro && (
             <p className="scan-screen__message scan-screen__message--erro" data-testid="pick-erro">
               {erro}
             </p>
           )}
-        </form>
+        </>
       )}
     </div>
   );

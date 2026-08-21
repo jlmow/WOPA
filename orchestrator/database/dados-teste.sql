@@ -26,13 +26,28 @@
     artigo, dimensões de caixa/peso unitário (o PHC só deu o total já
     calculado por linha, não a ficha do artigo -- dimensões
     aproximadas a partir de vol_pick/caixas_nec, não exatas), zona/
-    alvéolos e stock. Isto não bloqueia nenhum teste -- a tipificação
-    já vem decidida (ADR-032), a cubicagem do WOPA nem entra em jogo
-    para nenhuma destas Ordens.
+    alvéolos, paletes/cestos e o stock. Isto não bloqueia nenhum teste
+    -- a tipificação já vem decidida (ADR-032), a cubicagem do WOPA nem
+    entra em jogo para nenhuma destas Ordens.
 
-    Todos os IDs de zona/alvéolo/plataforma/missão têm prefixo
-    "teste"/"TST-" de propósito -- fácil de identificar e de apagar
-    mais tarde (ver fundo do ficheiro).
+    Todos os IDs de zona/alvéolo/plataforma/missão/palete/cesto têm
+    prefixo "teste"/"TST-" de propósito -- fácil de identificar e de
+    apagar mais tarde (ver fundo do ficheiro).
+
+    ADR-035 -- Paletes de origem (stock) e Paletes de missão (montagem)
+    são a MESMA tabela (equipamento reaproveitado, ver ARCHITECTURE.md):
+      - Paletes de ORIGEM: já têm stock (SA), por isso já vêm com
+        LocalizacaoAtualId = o alvéolo onde estão paradas. O pda recusa
+        um pick sem o operador ler a matrícula certa -- por isso
+        alv-teste-02 fica com 2 paletes (SKUs diferentes na mesma) e
+        alv-teste-03 fica com 2 paletes do MESMO SKU (quantidade
+        dividida) -- os dois casos que a validação tem de aguentar.
+      - Paletes de MISSÃO: vêm do depósito de paletes vazias (Ativa=1,
+        sem LocalizacaoAtualId -- "em circulação"), uma por Plataforma,
+        para o operador ler no gate de montagem (ADR-029). O pda
+        também recusa uma matrícula de montagem desconhecida.
+      - Cestos: mesma lógica -- pré-carregados aqui, um conjunto por
+        Plataforma conforme o tipo (P1=1, P2=2, P4=4 cestos).
 
     Como correr (depois de reset-database.sql + schema.sql):
       sqlcmd -S <servidor> -d WOPA -E -f 65001 -i dados-teste.sql
@@ -93,6 +108,92 @@ WHEN NOT MATCHED THEN
 GO
 
 -------------------------------------------------------------------------
+-- Paletes de teste (ADR-035) -- equipamento pré-carregado, tal como o
+-- ecrã "Equipamento" do controller faria. Duas famílias:
+--   - Origem: já paradas num alvéolo, com stock (SA mais abaixo).
+--   - Missão: no depósito, sem localização -- para o gate de montagem.
+-------------------------------------------------------------------------
+
+MERGE dbo.paletes AS alvo
+USING (VALUES
+    -- Origem -- Ordem A (alv-teste-02 com 2 paletes de SKUs diferentes;
+    -- alv-teste-03 com 2 paletes do MESMO SKU, quantidade dividida)
+    (N'palete-teste-a01',  N'TST-PAL-A01',  N'alv-teste-01'),
+    (N'palete-teste-a02',  N'TST-PAL-A02',  N'alv-teste-02'),
+    (N'palete-teste-a03a', N'TST-PAL-A03A', N'alv-teste-03'),
+    (N'palete-teste-a03b', N'TST-PAL-A03B', N'alv-teste-03'),
+    (N'palete-teste-a04',  N'TST-PAL-A04',  N'alv-teste-04'),
+    -- Origem -- Ordem B
+    (N'palete-teste-b05',  N'TST-PAL-B05',  N'alv-teste-05'),
+    (N'palete-teste-b06',  N'TST-PAL-B06',  N'alv-teste-06'),
+    -- Origem -- Ordem C
+    (N'palete-teste-c07',  N'TST-PAL-C07',  N'alv-teste-07'),
+    (N'palete-teste-c08',  N'TST-PAL-C08',  N'alv-teste-08'),
+    (N'palete-teste-c09',  N'TST-PAL-C09',  N'alv-teste-09'),
+    (N'palete-teste-c10',  N'TST-PAL-C10',  N'alv-teste-10'),
+    (N'palete-teste-c11',  N'TST-PAL-C11',  N'alv-teste-11'),
+    -- Origem -- Ordem D
+    (N'palete-teste-d12',  N'TST-PAL-D12',  N'alv-teste-12'),
+    (N'palete-teste-d13',  N'TST-PAL-D13',  N'alv-teste-13'),
+    (N'palete-teste-d14',  N'TST-PAL-D14',  N'alv-teste-14'),
+    (N'palete-teste-d15',  N'TST-PAL-D15',  N'alv-teste-15'),
+    (N'palete-teste-d16',  N'TST-PAL-D16',  N'alv-teste-16'),
+    (N'palete-teste-d17',  N'TST-PAL-D17',  N'alv-teste-17'),
+    (N'palete-teste-d18',  N'TST-PAL-D18',  N'alv-teste-18'),
+    -- Origem -- Ordem E
+    (N'palete-teste-e19',  N'TST-PAL-E19',  N'alv-teste-19'),
+    (N'palete-teste-e20',  N'TST-PAL-E20',  N'alv-teste-20'),
+    (N'palete-teste-e21',  N'TST-PAL-E21',  N'alv-teste-21'),
+    (N'palete-teste-e22',  N'TST-PAL-E22',  N'alv-teste-22'),
+    (N'palete-teste-e23',  N'TST-PAL-E23',  N'alv-teste-23'),
+    (N'palete-teste-e24',  N'TST-PAL-E24',  N'alv-teste-24'),
+    -- Missão -- uma palete de depósito por Plataforma, para montar
+    (N'palete-teste-mont-a',  N'TST-PAL-MONT-A',  NULL),
+    (N'palete-teste-mont-b',  N'TST-PAL-MONT-B',  NULL),
+    (N'palete-teste-mont-c',  N'TST-PAL-MONT-C',  NULL),
+    (N'palete-teste-mont-d',  N'TST-PAL-MONT-D',  NULL),
+    (N'palete-teste-mont-e1', N'TST-PAL-MONT-E1', NULL),
+    (N'palete-teste-mont-e2', N'TST-PAL-MONT-E2', NULL),
+    (N'palete-teste-mont-e3', N'TST-PAL-MONT-E3', NULL),
+    (N'palete-teste-mont-e4', N'TST-PAL-MONT-E4', NULL)
+) AS novo (Id, Matricula, LocalizacaoAtualId)
+ON alvo.Id = novo.Id
+WHEN NOT MATCHED THEN
+    INSERT (Id, Matricula, LocalizacaoAtualId)
+    VALUES (novo.Id, novo.Matricula, novo.LocalizacaoAtualId);
+GO
+
+-------------------------------------------------------------------------
+-- Cestos de teste (ADR-030/035) -- um conjunto por Plataforma, conforme
+-- o tipo (P1=1, P2=2, P4=4), todos do único tipo de cesto seedado
+-- ("cesto-standard").
+-------------------------------------------------------------------------
+
+MERGE dbo.cestoinstancias AS alvo
+USING (VALUES
+    (N'cesto-teste-a1', N'TST-CESTO-A1'),
+    (N'cesto-teste-a2', N'TST-CESTO-A2'),
+    (N'cesto-teste-b1', N'TST-CESTO-B1'),
+    (N'cesto-teste-b2', N'TST-CESTO-B2'),
+    (N'cesto-teste-b3', N'TST-CESTO-B3'),
+    (N'cesto-teste-b4', N'TST-CESTO-B4'),
+    (N'cesto-teste-c1', N'TST-CESTO-C1'),
+    (N'cesto-teste-c2', N'TST-CESTO-C2'),
+    (N'cesto-teste-c3', N'TST-CESTO-C3'),
+    (N'cesto-teste-c4', N'TST-CESTO-C4'),
+    (N'cesto-teste-d1', N'TST-CESTO-D1'),
+    (N'cesto-teste-e1', N'TST-CESTO-E1'),
+    (N'cesto-teste-e2', N'TST-CESTO-E2'),
+    (N'cesto-teste-e3', N'TST-CESTO-E3'),
+    (N'cesto-teste-e4', N'TST-CESTO-E4')
+) AS novo (Id, Matricula)
+ON alvo.Id = novo.Id
+WHEN NOT MATCHED THEN
+    INSERT (Id, Matricula, TipoCestoId)
+    VALUES (novo.Id, novo.Matricula, N'cesto-standard');
+GO
+
+-------------------------------------------------------------------------
 -- Artigos de teste -- Sku/Ean são o código de barras REAL de cada
 -- linha; descrição/dimensões/peso unitário estimados a partir de
 -- vol_pick/peso_linha/qtd/caixas_nec reais (o PHC só deu o total já
@@ -143,47 +244,51 @@ WHEN NOT MATCHED THEN
 GO
 
 -------------------------------------------------------------------------
--- Stock por alvéolo (SA) -- sempre acima do qtd real da linha, com
--- alguma folga. 560673995077 (Ordem A) de propósito em 2 alvéolos,
--- para testar o ecrã de escolha (ADR-022).
+-- Stock por alvéolo+palete (SA, ADR-035 -- chave composta Sku+AlveoloId+
+-- PaleteId) -- sempre acima do qtd real da linha, com alguma folga.
+-- 560673995077 (Ordem A) de propósito em 2 alvéolos (ecrã de escolha de
+-- alvéolo, ADR-022); 560673996105 (Ordem A) de propósito em 2 paletes no
+-- MESMO alvéolo (o operador tem de ler a palete certa antes de picar,
+-- ADR-035) -- a soma por alvéolo continua a bater com o total original.
 -------------------------------------------------------------------------
 
 MERGE dbo.sa AS alvo
 USING (VALUES
     -- Ordem A
-    (N'TST-560673995077', N'alv-teste-01', 10),
-    (N'TST-560673995077', N'alv-teste-02', 10),
-    (N'TST-560673995485', N'alv-teste-02', 50),
-    (N'TST-560673996105', N'alv-teste-03', 50),
-    (N'TST-560673996107', N'alv-teste-04', 50),
+    (N'TST-560673995077', N'alv-teste-01', N'palete-teste-a01',  10),
+    (N'TST-560673995077', N'alv-teste-02', N'palete-teste-a02',  10),
+    (N'TST-560673995485', N'alv-teste-02', N'palete-teste-a02',  50),
+    (N'TST-560673996105', N'alv-teste-03', N'palete-teste-a03a', 30),
+    (N'TST-560673996105', N'alv-teste-03', N'palete-teste-a03b', 20),
+    (N'TST-560673996107', N'alv-teste-04', N'palete-teste-a04',  50),
     -- Ordem B
-    (N'TST-560673993773', N'alv-teste-05', 30),
-    (N'TST-560673993777', N'alv-teste-06', 30),
+    (N'TST-560673993773', N'alv-teste-05', N'palete-teste-b05', 30),
+    (N'TST-560673993777', N'alv-teste-06', N'palete-teste-b06', 30),
     -- Ordem C
-    (N'TST-560673998092', N'alv-teste-07', 20),
-    (N'TST-560673998328', N'alv-teste-08', 30),
-    (N'TST-560673998403', N'alv-teste-09', 10),
-    (N'TST-560673998404', N'alv-teste-10', 10),
-    (N'TST-560673998406', N'alv-teste-11', 10),
+    (N'TST-560673998092', N'alv-teste-07', N'palete-teste-c07', 20),
+    (N'TST-560673998328', N'alv-teste-08', N'palete-teste-c08', 30),
+    (N'TST-560673998403', N'alv-teste-09', N'palete-teste-c09', 10),
+    (N'TST-560673998404', N'alv-teste-10', N'palete-teste-c10', 10),
+    (N'TST-560673998406', N'alv-teste-11', N'palete-teste-c11', 10),
     -- Ordem D
-    (N'TST-560673991108', N'alv-teste-12', 10),
-    (N'TST-560673993425', N'alv-teste-13', 10),
-    (N'TST-560673995223', N'alv-teste-14', 10),
-    (N'TST-560673997187', N'alv-teste-15', 20),
-    (N'TST-560673997196', N'alv-teste-16', 20),
-    (N'TST-560673998105', N'alv-teste-17', 10),
-    (N'TST-560673998341', N'alv-teste-18', 10),
+    (N'TST-560673991108', N'alv-teste-12', N'palete-teste-d12', 10),
+    (N'TST-560673993425', N'alv-teste-13', N'palete-teste-d13', 10),
+    (N'TST-560673995223', N'alv-teste-14', N'palete-teste-d14', 10),
+    (N'TST-560673997187', N'alv-teste-15', N'palete-teste-d15', 20),
+    (N'TST-560673997196', N'alv-teste-16', N'palete-teste-d16', 20),
+    (N'TST-560673998105', N'alv-teste-17', N'palete-teste-d17', 10),
+    (N'TST-560673998341', N'alv-teste-18', N'palete-teste-d18', 10),
     -- Ordem E
-    (N'TST-560673995388', N'alv-teste-19', 150),
-    (N'TST-560673995382', N'alv-teste-20', 200),
-    (N'TST-560673995392', N'alv-teste-21', 200),
-    (N'TST-560673995480', N'alv-teste-22', 220),
-    (N'TST-560673995483', N'alv-teste-23', 200),
-    (N'TST-560673995486', N'alv-teste-24', 220)
-) AS novo (Sku, AlveoloId, Quantidade)
-ON alvo.Sku = novo.Sku AND alvo.AlveoloId = novo.AlveoloId
+    (N'TST-560673995388', N'alv-teste-19', N'palete-teste-e19', 150),
+    (N'TST-560673995382', N'alv-teste-20', N'palete-teste-e20', 200),
+    (N'TST-560673995392', N'alv-teste-21', N'palete-teste-e21', 200),
+    (N'TST-560673995480', N'alv-teste-22', N'palete-teste-e22', 220),
+    (N'TST-560673995483', N'alv-teste-23', N'palete-teste-e23', 200),
+    (N'TST-560673995486', N'alv-teste-24', N'palete-teste-e24', 220)
+) AS novo (Sku, AlveoloId, PaleteId, Quantidade)
+ON alvo.Sku = novo.Sku AND alvo.AlveoloId = novo.AlveoloId AND alvo.PaleteId = novo.PaleteId
 WHEN NOT MATCHED THEN
-    INSERT (Sku, AlveoloId, Quantidade) VALUES (novo.Sku, novo.AlveoloId, novo.Quantidade);
+    INSERT (Sku, AlveoloId, PaleteId, Quantidade) VALUES (novo.Sku, novo.AlveoloId, novo.PaleteId, novo.Quantidade);
 GO
 
 -------------------------------------------------------------------------
@@ -223,7 +328,8 @@ GO
 -------------------------------------------------------------------------
 -- Plataformas -- 1 cada para A/B/C/D; 4 para E (P1(4), IndiceCamada/
 -- ClasseCamada calculados como CubicagemService.SequenciaCamadas(4, ...)
--- calcularia: 1 Pesada, 2 Leve, 3 Leve, 4 Pesada).
+-- calcularia: 1 Pesada, 2 Leve, 3 Leve, 4 Pesada). PaleteId fica NULL --
+-- só é atribuído quando o operador monta a plataforma no pda (ADR-035).
 -------------------------------------------------------------------------
 
 MERGE dbo.plataformas AS alvo
@@ -350,7 +456,7 @@ WHEN NOT MATCHED THEN
     VALUES (novo.Id, novo.MissaoId, novo.Sku, novo.Descricao, novo.CodigoBarras, novo.AlveoloId, novo.Plataforma, novo.TipoPlataformaCodigo, novo.QuantidadeAlvo);
 GO
 
-PRINT 'Dados de teste prontos -- 8 missões de picking (Ordens A-E, Zona de Teste A), todas com plataforma por montar.';
+PRINT 'Dados de teste prontos -- 8 missões de picking (Ordens A-E, Zona de Teste A), todas com plataforma por montar. Matrículas de paletes/cestos pré-carregadas (ADR-035): use TST-PAL-MONT-* e TST-CESTO-* para a montagem, TST-PAL-* (sem MONT) para os picks.';
 GO
 
 /*
@@ -361,15 +467,14 @@ GO
       DELETE FROM dbo.missaolinhas WHERE Id LIKE N'missaolinha-teste-%';
       DELETE FROM dbo.missao WHERE Id LIKE N'missao-teste-%';
       DELETE FROM dbo.ordensseparacaolinhas WHERE Id LIKE N'ps-linha-teste-%';
+      DELETE FROM dbo.sl WHERE PlataformaId LIKE N'plat-teste-%' OR PaleteId LIKE N'palete-teste-%';
       DELETE FROM dbo.plataformacestos WHERE PlataformaId LIKE N'plat-teste-%';
-      DELETE FROM dbo.cestoinstancias WHERE Id IN (
-          SELECT ci.Id FROM dbo.cestoinstancias ci
-          WHERE NOT EXISTS (SELECT 1 FROM dbo.plataformacestos pc WHERE pc.MatriculaCesto = ci.Matricula)
-      ); -- só as que sobraram do gate de montagem sem já teres feito limpeza acima
+      DELETE FROM dbo.cestoinstancias WHERE Id LIKE N'cesto-teste-%';
       DELETE FROM dbo.ordensseparacao WHERE Id LIKE N'ps-teste-%';
       DELETE FROM dbo.plataformas WHERE Id LIKE N'plat-teste-%';
       DELETE FROM dbo.ordenspreparacao WHERE Id LIKE N'op-teste-%';
       DELETE FROM dbo.sa WHERE AlveoloId LIKE N'alv-teste-%';
+      DELETE FROM dbo.paletes WHERE Id LIKE N'palete-teste-%';
       DELETE FROM dbo.artigos WHERE Sku LIKE N'TST-%';
       DELETE FROM dbo.alv WHERE Id LIKE N'alv-teste-%';
       DELETE FROM dbo.zonas WHERE Id = N'zona-teste-a';

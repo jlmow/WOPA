@@ -33,6 +33,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
     public DbSet<CelulaEntity> Celulas => Set<CelulaEntity>();
     public DbSet<PlataformaCestoEntity> PlataformaCestos => Set<PlataformaCestoEntity>();
     public DbSet<CestoInstanciaEntity> CestoInstancias => Set<CestoInstanciaEntity>();
+    public DbSet<PaleteEntity> Paletes => Set<PaleteEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -137,6 +138,7 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
             e.HasKey(x => x.Id);
             e.HasOne(x => x.TipoPlataforma).WithMany().HasForeignKey(x => x.TipoPlataformaCodigo);
             e.HasOne<OrdemPreparacaoEntity>().WithMany(x => x.Plataformas).HasForeignKey(x => x.OrdemPreparacaoId);
+            e.HasOne<PaleteEntity>().WithMany().HasForeignKey(x => x.PaleteId);
         });
 
         modelBuilder.Entity<MissaoEntity>(e =>
@@ -165,15 +167,20 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
         modelBuilder.Entity<EstoqueAlveoloEntity>(e =>
         {
             e.ToTable("sa");
-            e.HasKey(x => new { x.Sku, x.AlveoloId });
+            e.HasKey(x => new { x.Sku, x.AlveoloId, x.PaleteId });
             e.HasOne(x => x.Alveolo).WithMany().HasForeignKey(x => x.AlveoloId);
+            e.HasOne(x => x.Palete).WithMany().HasForeignKey(x => x.PaleteId);
         });
 
         modelBuilder.Entity<MovimentoStockEntity>(e =>
         {
             e.ToTable("sl");
             e.HasKey(x => x.Id);
+            // PlataformaId = destino (a palete da missão, ADR-034); PaleteId =
+            // origem (de onde saiu o stock, ADR-035) -- FKs distintas para a
+            // mesma tabela Paletes/Plataformas, um pick tem sempre as duas.
             e.HasOne<PlataformaEntity>().WithMany().HasForeignKey(x => x.PlataformaId);
+            e.HasOne<PaleteEntity>().WithMany().HasForeignKey(x => x.PaleteId);
         });
 
         modelBuilder.Entity<CelulaEntity>(e =>
@@ -194,8 +201,16 @@ public class WopaDbContext(DbContextOptions<WopaDbContext> options) : DbContext(
             e.ToTable("cestoinstancias");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.Matricula).IsUnique();
-            e.HasOne<CestoEntity>().WithMany().HasForeignKey(x => x.TipoCestoId);
-            e.HasOne<AlveoloEntity>().WithMany().HasForeignKey(x => x.LocalizacaoAtualId);
+            e.HasOne(x => x.TipoCesto).WithMany().HasForeignKey(x => x.TipoCestoId);
+            e.HasOne(x => x.LocalizacaoAtual).WithMany().HasForeignKey(x => x.LocalizacaoAtualId);
+        });
+
+        modelBuilder.Entity<PaleteEntity>(e =>
+        {
+            e.ToTable("paletes");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Matricula).IsUnique();
+            e.HasOne(x => x.LocalizacaoAtual).WithMany().HasForeignKey(x => x.LocalizacaoAtualId);
         });
     }
 }

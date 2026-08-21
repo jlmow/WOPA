@@ -15,4 +15,7 @@ public class CestoInstanciaEntity
     /// <summary>ALV onde está parado — NULL enquanto EmUso (em circulação, sem alvéolo fixo).</summary>
     public string? LocalizacaoAtualId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+
+    public CestoEntity? TipoCesto { get; set; }
+    public AlveoloEntity? LocalizacaoAtual { get; set; }
 }

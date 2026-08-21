@@ -20,4 +20,7 @@ public class MovimentoStockEntity
 
     /// <summary>Palete/plataforma de destino do pick (ADR-034) — preenchida sozinha a partir da Missão, sem passo novo no pda.</summary>
     public string? PlataformaId { get; set; }
+
+    /// <summary>Palete de ORIGEM (ADR-035) — de onde saiu o stock, lida pelo operador no pick. Distinta de PlataformaId (destino).</summary>
+    public string? PaleteId { get; set; }
 }

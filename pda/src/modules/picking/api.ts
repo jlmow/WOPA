@@ -23,11 +23,21 @@ export const pickingApi = {
     apiFetch<AlveoloComStock[]>(`/api/picking/tasks/${id}/alveolos`),
 
   // motivo (ADR-027): obrigatório no ecrã quando a quantidade difere da
-  // sugerida (ex.: "Falta de stock") — ver PickAlveolo.
-  pick: (id: string, alveoloId: string, quantidade: number, motivo: string | undefined, operacaoId: string): Promise<PickingTask> =>
+  // sugerida (ex.: "Falta de stock") — ver PickAlveolo. matriculaPalete
+  // (ADR-035): a palete de ORIGEM onde o stock realmente está — o
+  // operador lê-a a cada pick, mesmo que já tenha escolhido o alvéolo,
+  // porque um alvéolo pode ter mais do que uma palete com o mesmo SKU.
+  pick: (
+    id: string,
+    alveoloId: string,
+    matriculaPalete: string,
+    quantidade: number,
+    motivo: string | undefined,
+    operacaoId: string,
+  ): Promise<PickingTask> =>
     apiFetch<PickingTask>(`/api/picking/tasks/${id}/pick`, {
       method: "POST",
-      body: JSON.stringify({ alveoloId, quantidade, motivo, operacaoId }),
+      body: JSON.stringify({ alveoloId, matriculaPalete, quantidade, motivo, operacaoId }),
     }),
 
   confirm: (id: string, operacaoId: string): Promise<PickingTask> =>

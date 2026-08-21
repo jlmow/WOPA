@@ -20,8 +20,12 @@ public class PlataformaEntity
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
 
     /// <summary>Gate de montagem (ADR-029) — preenchidos na primeira zona que monta a plataforma.</summary>
+    [Obsolete("Substituído por PaleteId (ADR-035) — texto solto sem validação, já não é escrito. Fica sem uso, coluna não apagada (ADR-017).")]
     public string? MatriculaPalete { get; set; }
     public DateTime? MontadaEm { get; set; }
+
+    /// <summary>A palete (equipamento reutilizável, ADR-035) montada nesta plataforma — FK a Paletes, não texto solto.</summary>
+    public string? PaleteId { get; set; }
 
     public TipoPlataformaEntity? TipoPlataforma { get; set; }
 }

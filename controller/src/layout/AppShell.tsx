@@ -4,6 +4,7 @@ const NAV_ITEMS = [
   { to: "/ordens-preparacao", label: "Ordens de Preparação", end: false },
   { to: "/missoes", label: "Missões", end: false },
   { to: "/capacidade", label: "Capacidade", end: false },
+  { to: "/equipamento", label: "Equipamento", end: false },
   // Próximos ecrãs do controller (gestão de zonas, operadores, etc.) juntam-se aqui.
 ];
 

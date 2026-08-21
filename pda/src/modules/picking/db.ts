@@ -7,6 +7,7 @@ export interface OutboxEntry {
   taskId: string;
   barcode?: string;
   alveoloId?: string;
+  matriculaPalete?: string;
   quantidade?: number;
   motivo?: string;
   criadoEm: number;

@@ -529,9 +529,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_SL_Sku_Alveolo' AND o
 GO
 
 -------------------------------------------------------------------------
--- 19. SA — Stock por Armazém e Alvéolo
---     Quantidade atual por artigo e alvéolo — a "fotografia" que o
---     SL (18) vai atualizando ao longo do tempo.
+-- 19. SA — Stock por Armazém, Alvéolo e Palete
+--     Quantidade atual por artigo, alvéolo E palete de origem — a
+--     "fotografia" que o SL (18) vai atualizando ao longo do tempo.
+--     ADR-035: uma palete pode ter mais do que 1 SKU e um alvéolo pode
+--     ter mais do que 1 palete, por isso a chave é a tripla, não só o
+--     par (Sku, AlveoloId) que esta tabela tinha até aqui. A FK para
+--     dbo.paletes fica só na secção 30 (essa tabela é criada mais à
+--     frente neste script) — a coluna e a chave primária já ficam
+--     certas aqui.
 -------------------------------------------------------------------------
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sa' AND schema_id = SCHEMA_ID(N'dbo'))
@@ -540,10 +546,11 @@ BEGIN
     (
         Sku            NVARCHAR(50)  NOT NULL,
         AlveoloId      NVARCHAR(50)  NOT NULL,
+        PaleteId       NVARCHAR(50)  NOT NULL,
         Quantidade     INT           NOT NULL DEFAULT (0),
         AtualizadoEm   DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
 
-        CONSTRAINT PK_SA PRIMARY KEY (Sku, AlveoloId),
+        CONSTRAINT PK_SA PRIMARY KEY (Sku, AlveoloId, PaleteId),
         CONSTRAINT FK_SA_Alveolo FOREIGN KEY (AlveoloId) REFERENCES dbo.alv (Id),
         CONSTRAINT CK_SA_Quantidade CHECK (Quantidade >= 0)
     );
@@ -876,6 +883,79 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_SL_Plataforma')
     ALTER TABLE dbo.sl ADD CONSTRAINT FK_SL_Plataforma FOREIGN KEY (PlataformaId) REFERENCES dbo.plataformas (Id);
+GO
+
+-------------------------------------------------------------------------
+-- 30. Paletes (ADR-035) — equipamento físico reutilizável, com
+--     matrícula própria. A MESMA palete serve tanto para stock parado
+--     numa rack (SA/SL.PaleteId) como para a palete de uma missão
+--     (Plataformas.PaleteId) -- não há dois tipos de tabela, é o mesmo
+--     ID nas duas situações (correção de desenho pedida pelo cliente).
+--     As matrículas são pré-carregadas aqui (ecrã do controller), não
+--     inventadas ao ler -- ver o gate de montagem em PickingEndpoints,
+--     que passa a VALIDAR contra o que já existe nesta tabela em vez
+--     de criar instâncias na primeira leitura (como fazia até aqui
+--     para CestoInstancias, ADR-030 -- mesmo princípio corrigido).
+-------------------------------------------------------------------------
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'paletes' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.paletes
+    (
+        Id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,
+        Matricula          NVARCHAR(50)  NOT NULL UNIQUE,
+        Ativa              BIT           NOT NULL DEFAULT (1),
+        -- ALV onde está parada -- NULL enquanto em circulação numa missão.
+        LocalizacaoAtualId NVARCHAR(50)  NULL,
+        CriadoEm           DATETIME2     NOT NULL DEFAULT (SYSUTCDATETIME()),
+
+        CONSTRAINT FK_Paletes_Localizacao FOREIGN KEY (LocalizacaoAtualId) REFERENCES dbo.alv (Id)
+    );
+END
+GO
+
+-- FK de dbo.sa (secção 19) para dbo.paletes -- só agora, porque esta
+-- tabela é criada aqui, mais à frente no script.
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_SA_Palete')
+    ALTER TABLE dbo.sa ADD CONSTRAINT FK_SA_Palete FOREIGN KEY (PaleteId) REFERENCES dbo.paletes (Id);
+GO
+
+-- Instalação já existente (antes do ADR-035): sa ainda não tinha
+-- PaleteId nenhum. Acrescentado NULL por agora -- para reforçar a
+-- chave primária composta (Sku, AlveoloId, PaleteId) como no
+-- CREATE TABLE da secção 19, corre reset-database.sql + schema.sql
+-- (não há dados reais em produção ainda que justifiquem um backfill
+-- automático arriscado aqui).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.sa') AND name = N'PaleteId')
+BEGIN
+    ALTER TABLE dbo.sa ADD PaleteId NVARCHAR(50) NULL;
+    ALTER TABLE dbo.sa ADD CONSTRAINT FK_SA_Palete_Existente FOREIGN KEY (PaleteId) REFERENCES dbo.paletes (Id);
+END
+GO
+
+-- sl (movimentos de stock) ganha PaleteId -- a palete de ORIGEM (de
+-- onde saiu o stock). Distinto do PlataformaId da secção 29, que é a
+-- palete de DESTINO (a da missão) -- um pick tem as duas.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.sl') AND name = N'PaleteId')
+    ALTER TABLE dbo.sl ADD PaleteId NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_SL_Palete')
+    ALTER TABLE dbo.sl ADD CONSTRAINT FK_SL_Palete FOREIGN KEY (PaleteId) REFERENCES dbo.paletes (Id);
+GO
+
+-- plataformas.PaleteId substitui o MatriculaPalete em texto solto do
+-- ADR-029 (sem validação nenhuma) por uma FK a sério para dbo.paletes
+-- -- o gate de montagem passa a recusar matrículas desconhecidas em
+-- vez de aceitar qualquer texto. MatriculaPalete fica para trás, sem
+-- uso (não é apagada -- ver ADR-017/021, este ficheiro nunca é
+-- destrutivo).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.plataformas') AND name = N'PaleteId')
+    ALTER TABLE dbo.plataformas ADD PaleteId NVARCHAR(50) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_Plataformas_Palete')
+    ALTER TABLE dbo.plataformas ADD CONSTRAINT FK_Plataformas_Palete FOREIGN KEY (PaleteId) REFERENCES dbo.paletes (Id);
 GO
 
 PRINT 'Base de dados WOPA pronta.';
