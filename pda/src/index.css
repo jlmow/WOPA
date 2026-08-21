@@ -133,11 +133,15 @@ body {
 .task-card {
   width: 100%;
   display: grid;
-  /* minmax(0, 1fr): sem isto, a coluna da descrição recusa-se a encolher
+  /* minmax(0, 42%): sem o limite, esta coluna (código de barras + palete)
+     cresce para caber o texto todo numa linha só e esmaga a coluna da
+     descrição a 0px em larguras de telemóvel normais (visto no
+     computed style, não só ao olho) — o limite força-a a quebrar linha.
+     minmax(0, 1fr): sem isto, a coluna da descrição recusa-se a encolher
      abaixo do seu min-content e espreme a coluna da pill de estado, que
      fica cortada (visto ao vivo no telemóvel). minmax(78px, auto): dá à
      pill espaço garantido para "PENDENTE" mesmo em ecrãs estreitos. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(78px, auto);
+  grid-template-columns: minmax(0, 42%) minmax(0, 1fr) minmax(78px, auto);
   gap: 2px 10px;
   text-align: left;
   padding: 16px 16px 16px 14px;
