@@ -213,6 +213,19 @@ body {
   color: var(--pendente);
   background: #ecebe6;
 }
+
+/* Fila de missões só de consulta (ADR-037) — badge "Atual" no cartão da
+   missão que está mesmo a ser trabalhada, dentro de .option-card. */
+.mission-queue__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  color: #8a6f1e;
+  background: #f3e9cc;
+}
 .task-card--EmProgresso .task-card__status {
   color: #8a6f1e;
   background: #f3e9cc;

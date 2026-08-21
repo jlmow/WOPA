@@ -1,10 +1,14 @@
 import { apiFetch } from "../../shared/api/http";
-import type { AlveoloComStock, MissionSummary, PickingTask, PlataformaComposicao } from "./types";
+import type { AlveoloComStock, MissaoResumo, MissionSummary, PickingTask, PlataformaComposicao } from "./types";
 
 export const pickingApi = {
   listTasks: (): Promise<PickingTask[]> => apiFetch<PickingTask[]>("/api/picking/tasks"),
 
   getMission: (): Promise<MissionSummary> => apiFetch<MissionSummary>("/api/picking/mission"),
+
+  // ADR-037: fila de missões só de consulta — sempre em direto, como a
+  // composição da plataforma (ação rara, não passa pela fila de saída).
+  listMissions: (): Promise<MissaoResumo[]> => apiFetch<MissaoResumo[]>("/api/picking/missions"),
 
   // operacaoId (ADR-007): identifica a operação de forma única, gerada no
   // dispositivo antes de haver rede — permite ao orchestrator reconhecer

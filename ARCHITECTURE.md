@@ -2031,6 +2031,35 @@ começar pela Fase 1 e crescer para a Fase 2.
   palete/cesto "avariado" como ativo outra vez (só o controller,
   editando a matrícula diretamente, se vier a ser preciso).
 
+### ADR-037 — Fila de missões só de consulta
+
+- **Contexto:** "não devia ter uma lista de missões depois de picar a
+  zona, só de consulta? Eu tenho que obedecer a ordem da missão mas
+  devia dar a possibilidade do operador ver a lista de missões que
+  tem." — "uma missão de cada vez" (ADR-008) continua a valer, o `pda`
+  não deixa saltar à frente nem escolher livremente; o que faltava era
+  só visibilidade sobre o que está na fila.
+- **Backend:** `GET /api/picking/missions` — mesmo critério/ordem do
+  já existente `GET /api/picking/mission` (mais antiga primeiro, entre
+  as não concluídas do centro de trabalho Picking), mas devolve a fila
+  inteira em vez de só a primeira; cada entrada tem
+  `Atual=true`/`false` (a primeira é sempre a que `/mission` também
+  devolveria, para as duas rotas nunca poderem discordar sobre qual é
+  "a de agora").
+- **`pda` — novo componente `MissionQueue.tsx`:** acessível por um link
+  "Missões" no cabeçalho do módulo de picking (ao lado de "Módulos"),
+  volta ao ecrã onde estava antes ao fechar. Os cartões são `<div>`,
+  não `<button>` — deliberado, para não sugerir que dá para tocar e
+  saltar para outra missão. A missão atual fica destacada com o mesmo
+  estilo de seleção já usado no `PickAlveolo` (`option-card--
+  selecionado`) e uma badge "Atual".
+- **Deliberadamente fora de alcance:** filtrar a fila por zona (hoje
+  é uma fila única global, tal como o `/mission` já era — mudar isso é
+  uma decisão maior, ligada ao ponto ainda por definir da "localização
+  de passagem" do ADR-035); qualquer ação a partir daqui (é mesmo só
+  para ver, todas as ações continuam a acontecer dentro da missão
+  atual).
+
 - **Da reunião de planeamento (ADR-027), por implementar quando houver
   mais clareza:** matriz de validação no `pda` por tipo de plataforma
   (P0/caixa fechada/fracionado/vertical); put-to/transferência para

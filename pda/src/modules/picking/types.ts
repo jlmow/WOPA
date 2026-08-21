@@ -51,3 +51,15 @@ export interface PlataformaComposicao {
   paleteMatricula: string | null;
   cestos: CestoComposicao[];
 }
+
+// Fila de missões só de consulta (ADR-037) — "uma missão de cada vez"
+// (ADR-008) continua a valer, isto é só para o operador ver o que vem a
+// seguir, não para escolher/saltar à frente.
+export interface MissaoResumo {
+  id: string;
+  codigo: string;
+  totalLinhas: number;
+  linhasConcluidas: number;
+  estado: string;
+  atual: boolean;
+}

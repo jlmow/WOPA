@@ -29,6 +29,12 @@ public record MissionSummary(string Id, string Codigo, int TotalLinhas, int Linh
 
 public record MontagemRequest(string MatriculaPalete, string[] MatriculasCestos, string? OperacaoId = null);
 
+// ADR-037: fila de missões só de consulta -- o operador tem de seguir a
+// ordem (uma de cada vez, ADR-008), mas pediu para poder ver o que vem a
+// seguir sem ter de perguntar ao controller. Atual=true na primeira (a
+// mesma que /mission devolveria).
+public record MissaoResumoDto(string Id, string Codigo, int TotalLinhas, int LinhasConcluidas, string Estado, bool Atual);
+
 // Composição da plataforma já montada (ADR-036) -- o operador pode querer
 // confirmar o que está lá associado, sobretudo depois de trocar equipamento
 // avariado a meio da missão.
@@ -83,6 +89,35 @@ public static class PickingEndpoints
             return Results.Ok(new MissionSummary(missao.Id, missao.Codigo, total, concluidas, montagem));
         })
         .WithName("ObterResumoMissaoPicking");
+
+        // ADR-037: fila de missões só de consulta -- "uma missão de cada
+        // vez" (ADR-008) continua a valer, isto não deixa saltar à frente,
+        // só mostra o que vem a seguir. Mesmo critério/ordem do /mission.
+        group.MapGet("/missions", async (WopaDbContext db) =>
+        {
+            var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+            var missoes = await db.Missoes
+                .Where(m => m.CentroTrabalho == "Picking" && m.Estado != "Concluida" && m.Estado != "FechadaIncompleta"
+                    && (m.Estado != "Planeada" || m.DataPlaneada == null || m.DataPlaneada <= hoje))
+                .OrderBy(m => m.CriadaEm)
+                .ToListAsync();
+
+            var missaoIds = missoes.Select(m => m.Id).ToList();
+            var contagensPorMissao = (await db.MissaoLinhas
+                    .Where(l => missaoIds.Contains(l.MissaoId))
+                    .Select(l => new { l.MissaoId, l.Estado })
+                    .ToListAsync())
+                .GroupBy(l => l.MissaoId)
+                .ToDictionary(g => g.Key, g => (Total: g.Count(), Concluidas: g.Count(l => l.Estado == PickingTaskStatus.Concluida)));
+
+            var resultado = missoes.Select((m, indice) =>
+            {
+                var (total, concluidas) = contagensPorMissao.GetValueOrDefault(m.Id);
+                return new MissaoResumoDto(m.Id, m.Codigo, total, concluidas, m.Estado, indice == 0);
+            });
+            return Results.Ok(resultado);
+        })
+        .WithName("ListarFilaMissoesPicking");
 
         // Gate de montagem (ADR-029): sem plataforma indicada não há
         // picking de artigos. Primeira zona de uma Ordem monta a

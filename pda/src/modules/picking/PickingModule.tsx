@@ -9,6 +9,7 @@ import { TaskList } from "./components/TaskList";
 import { ScanTask } from "./components/ScanTask";
 import { PickAlveolo } from "./components/PickAlveolo";
 import { MontarPlataforma } from "./components/MontarPlataforma";
+import { MissionQueue } from "./components/MissionQueue";
 import { SyncBadge } from "./components/SyncBadge";
 import { useSession } from "../../app/SessionContext";
 import { useServerConnection } from "../../shared/useServerConnection";
@@ -18,7 +19,9 @@ import { gerarOperacaoId } from "../../shared/id";
 // alvéolo + quantidade (ADR-022) antes de a leitura seguinte ser possível.
 // "montagem" (ADR-029): gate antes de tudo isto — sem plataforma
 // montada/confirmada não há leitura de artigos.
-type Vista = "carregando" | "montagem" | "leitura" | "picking" | "lista" | "concluida";
+// "missoes" (ADR-037): fila de missões só de consulta — não substitui
+// "lista" (linhas da missão atual), mostra as missões seguintes na fila.
+type Vista = "carregando" | "montagem" | "leitura" | "picking" | "lista" | "concluida" | "missoes";
 
 const MISSAO_CODIGO_CHAVE = "missaoCodigo";
 
@@ -31,6 +34,7 @@ export function PickingModule() {
   const [missao, setMissao] = useState<MissionSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [vista, setVista] = useState<Vista>("carregando");
+  const [vistaAntesDeMissoes, setVistaAntesDeMissoes] = useState<Vista>("concluida");
   const [erro, setErro] = useState<string | null>(null);
 
   function avancarAposGate(lista: PickingTask[]) {
@@ -227,9 +231,23 @@ export function PickingModule() {
           <p className="app__eyebrow">
             Missão {missao?.codigo ?? "…"} · Zona {zona?.codigo}
           </p>
-          <button className="link-button" onClick={() => navigate("/modulos")} data-testid="voltar-modulos">
-            Módulos
-          </button>
+          <div>
+            {vista !== "carregando" && vista !== "missoes" && (
+              <button
+                className="link-button"
+                onClick={() => {
+                  setVistaAntesDeMissoes(vista);
+                  setVista("missoes");
+                }}
+                data-testid="ver-missoes"
+              >
+                Missões
+              </button>
+            )}
+            <button className="link-button" onClick={() => navigate("/modulos")} data-testid="voltar-modulos">
+              Módulos
+            </button>
+          </div>
         </div>
         <h1>Picking</h1>
         <SyncBadge />
@@ -277,6 +295,8 @@ export function PickingModule() {
           )}
         </div>
       )}
+
+      {vista === "missoes" && <MissionQueue onFechar={() => setVista(vistaAntesDeMissoes)} />}
 
       {vista === "lista" && (
         <>
