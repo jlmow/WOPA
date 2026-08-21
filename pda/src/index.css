@@ -196,6 +196,7 @@ body {
   grid-column: 3;
   grid-row: 2;
   justify-self: end;
+  align-self: center;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
